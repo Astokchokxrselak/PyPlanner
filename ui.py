@@ -1,6 +1,4 @@
 from typing import Union, Callable
-import win10toast
-import win32api
 
 from msvcrt import getwch as inputkey, getch
 
@@ -8,15 +6,19 @@ from datetime import datetime
 
 from math import ceil
 
-import sys, getpass
-
 import os
-clear = lambda: os.system('cls')
+
+from structs import (BaseAssignment, Group,
+                     groups, active_groups, inactive_groups)
+
+
+def clear(): return os.system('cls')
 
 
 # todo: print warning origin's position
 def printwarn(*args):
     print("WARNING:", *args)
+
 
 def put(*args):
     print(*args, end="")
@@ -254,54 +256,6 @@ def get_box(w, h):
 # Reminder: Has a Start Date
 # Persistent: Has a Due Date, a Start Date. Due Date increments by a certain amount.
 
-class BaseAssignment:
-    def __init__(self, name: str, description: str, start_date: datetime = None, due_date: datetime = None,
-                 increment: datetime = None):
-        self.name = name
-        self.desc = description
-        self.start_date = start_date
-        self.due_date = due_date
-        self.date_increment = increment
-
-    @property
-    def has_description(self) -> bool:
-        return bool(self.desc)
-
-    @property
-    def has_name(self) -> bool:
-        return bool(self.has_name)
-
-    @property
-    def has_start_date(self) -> bool:
-        return self.start_date is not None
-
-    @property
-    def has_due_date(self) -> bool:
-        return self.due_date is not None
-
-    @property
-    def is_persistent(self) -> bool:
-        return self.date_increment is not None
-
-    def time_to_due_date(self):
-        return datetime.now() - self.due_date
-
-    def time_to_start_date(self):
-        return datetime.now() - self.start_date
-
-    @property
-    def closer_date(self) -> datetime:
-        has_dd, has_sd = self.has_due_date, self.has_start_date
-        if not has_dd and not has_sd:
-            return None
-        if has_dd and has_sd:
-            if self.time_to_due_date() < self.time_to_start_date():
-                return self.start_date
-            else:
-                return self.due_date
-        else:
-            return self.due_date or self.start_date
-
 
 def state(string: str, val: int = None):
     if val is None:
@@ -343,48 +297,6 @@ padding = 36  # space between in progress and completed
 # Closest Start Date: 11:59PM-11/24/23
 # Closest End Date: 11:59PM-11/25/23
 
-class Group:
-    def __init__(self, name, description, conditions):
-        self.name = name
-        self.desc = description
-        self.conds = conditions
-
-        self.in_progress = []
-        self.completed = []
-
-    @property
-    def assignment_count(self):
-        return len(self.in_progress) + len(self.completed)
-
-    def add_assignment(self, assignment: BaseAssignment):
-        self.in_progress.append(assignment)
-
-    def get_closest_date(self):
-        closest = None
-        for a in self.in_progress:
-            assignment: BaseAssignment = a
-            candidate = assignment.closer_date
-            if not closest or candidate > closest:
-                closest = candidate
-        return closest
-
-    def get_closest_start_date(self):
-        closest = None
-        for a in self.in_progress:
-            assignment: BaseAssignment = a
-            candidate = assignment.start_date
-            if not closest or candidate > closest:
-                closest = candidate
-        return closest
-
-    def get_closest_due_date(self):
-        closest = None
-        for a in self.in_progress:
-            assignment: BaseAssignment = a
-            candidate = assignment.due_date
-            if not closest or candidate > closest:
-                closest = candidate
-        return closest
 
 
 SCREEN_WIDTH = 133
@@ -416,13 +328,6 @@ class InputMap:
 # has a setup function that uses the same stuff, but the other
 # things are automatically performed (clear, pop-check, etc.)
 
-groups: list[list['Group'], list['Group']] = [[], []]  # active groups  :  inactive groups
-
-def active_groups():
-    return groups[0]
-
-def inactive_groups():
-    return groups[1]
 
 example_group = Group("Poppy Seed", "Seed assignments", None)
 example_group2 = Group("Pee Group", "We pee here", None)
@@ -881,12 +786,16 @@ STARTING_DIMENSIONS = ("20", "133")
 run(False,
     ["lngth", STARTING_DIMENSIONS[0]],
     ["width", STARTING_DIMENSIONS[1]])
-while True:
-    try:
-        groups_menu()
-    except Exception as e:
-        print(e)
-        header = "COMMAND HISTORY"
-        print(header, '-' * len(header), *COMMAND_HISTORY, '-' * len(header), sep="\n")
-        if get_input() == "show":
-            raise e
+
+
+def ui():
+    while True:
+        try:
+            groups_menu()
+        except Exception as e:
+            print(e)
+            header = "COMMAND HISTORY"
+            print(header, '-' * len(header), *COMMAND_HISTORY, '-' * len(header), sep="\n")
+            if get_input() == "show":
+                raise e
+
