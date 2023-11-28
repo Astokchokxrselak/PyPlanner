@@ -2,6 +2,7 @@ from typing import Union, Callable
 
 from msvcrt import getwch as inputkey, getch
 
+import time
 from datetime import datetime
 
 from math import ceil
@@ -15,6 +16,14 @@ from structs import (BaseAssignment, Group,
 def clear(): return os.system('cls')
 
 
+UP = b'\xe0H'
+RIGHT = b'\xe0M'
+DOWN = b'\xe0P'
+LEFT = b'\xe0K'
+SPACEBAR = b' '
+ANY_KEY = b''
+
+
 # todo: print warning origin's position
 def printwarn(*args):
     print("WARNING:", *args)
@@ -22,6 +31,10 @@ def printwarn(*args):
 
 def put(*args):
     print(*args, end="")
+
+
+def clamp(vl: int, mn: int, mx: int) -> int:
+    return max(min(vl, mx), mn)
 
 """
 win32api.MessageBeep(0x00000040)
@@ -65,6 +78,10 @@ class Box:
             self.grid[0][x] = self.grid[self.true_h - 1][x] = ch
         return self
 
+    def set_border_default(self):
+        self.set_vborder('|')
+        self.set_hborder('=')
+
     def set_border(self, ch):
         self.set_vborder(ch)
         self.set_hborder(ch)
@@ -91,6 +108,9 @@ class Box:
     def true_w(self):
         return self.w + 2
 
+    # TODO: place pivot (center, top left, etc.)
+    def place(self, obj: 'Box', position: tuple):
+        self.texts[position] = obj
     def place_text(self, text: str, position: tuple):
         # self.texts[position] = text
         self.replace_text(text, position)
@@ -244,6 +264,55 @@ class Box:
         return self.__repr__()
 
 
+# todo: maybe try to have a blinking carat? too much work for now
+CARAT = '∣'
+
+# single line input field
+class InputField(Box):
+    FIELD = None
+    def __init__(self, w: int, h: int, carat_pos: list[int, int] = (1, 1), **kwargs):
+        super().__init__(w, h, **kwargs)
+        self.carat_origin = list(carat_pos)
+        self.carat = 0 # the beginning of the string
+
+        self.text = ""
+
+    def type(self, char: Union[str, bytes]):
+        pos = self.carat
+        self.text = self.text[:pos] + (char if isinstance(char, str) else char.decode('ascii')) + self.text[pos:]
+        self.carat += 1  # move the carat forward
+    def delete(self, del_count: int):
+        self.text = self.text[:self.carat - del_count] + self.text[self.carat:]
+        self.carat -= del_count
+    def bake(self):
+        # if the carat is greater than the length of the box, we need to offset the view
+        # by the displacement of the carat from the length of the box
+
+        yi, xi = self.carat_origin
+        lentex = min(self.w - xi, len(self.text))
+        offs = len(self.text) - lentex
+
+        # remove ALL carats
+        for x in range(xi, self.true_w - xi + 1):
+            if x - xi < lentex:
+                self.grid[yi][x] = self.text[x - xi + offs]
+            else:
+                self.grid[yi][x] = ' '
+            pass
+        if InputField.FIELD == self:
+            self.grid[yi][xi + min(self.w - xi, self.carat)] = CARAT
+
+
+        # offs = max(len(self.text) - lentex, 0)
+        # for i in range(xi, xi + lentex):
+        #    # TODO: multiline inputfield
+        #    print(lentex)
+        #    self.grid[yi][i] = self.text[0: i - xi + 0]  # index from xi to x
+        # if InputField.FIELD == self:
+        #    self.grid[yi][xi + lentex] = CARAT
+        return super().bake()
+
+
 def get_box(w, h):
     box = Box(w, h)
     return box
@@ -321,6 +390,11 @@ class InputMap:
             else:
                 return self.inputs[key]()
         except KeyError:
+            if isinstance(key, bytes):
+                try:
+                    return self.inputs[ANY_KEY](key)
+                except KeyError:
+                    return self.run()
             return self.run()
 
 
@@ -339,268 +413,280 @@ active_groups().append(example_group3)
 example_group_inactive = Group("Mass Destruction Plots", "Plots to muder everyone", None)
 inactive_groups().append(example_group_inactive)
 
-def groups_menu():
-    if is_trigger(POP):
-        trigger(POP)
-        return
 
-    clear()
-    BOX_HEIGHT = 6
+class Menu:
+    def get_map(self):
+        return InputMap({},{})
+    def __init__(self):
+        self.map = self.get_map()
 
+    def menu_display(self):
+        bx = get_box(state(WIDTH), state(LNGTH))
+        return bx
 
-    w, h = state(WIDTH), state(LNGTH)
-    box = get_box(w, h)
-    box.place_vbar(box.w // 2 - padding // 2, box.w // 2 + padding // 2)
-    box.place_hcenter_text("Groups List", 0)
+    def show(self):
+        global MENU
+        MENU = self
 
-    button_y = 1
-    button_h = 2
+        if is_trigger(POP):
+            trigger(POP)
+            return
+        if self.pop_if():
+            return
 
-    def BUTTON_Y_POSITION():
-        nonlocal button_y
-        delta = button_h + 2
-        y = button_y
-        button_y += delta
-        return y
+        clear()
+        box = self.menu_display().bake()
+        print(box)
 
-    box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text("Add Group",
-                                                                                               1, "(G)", 2)
-    box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text("Actions", 1, "(A)", 2)
+        self.map.run()
+        self.show()
 
-    box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
-        "Clear All", 1, "(:cl)", 2)
-    box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
-        "Scheduler", 1, "(S)", 2)
-    box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
-        "Save & Quit Planner", 1, "(:qt)", 2)
+    def pop_if(self) -> bool:
+        return False
 
+class TemplateMenu(Menu):
+    def get_map(self):
+        return InputMap({},{})
+    def menu_display(self):
+        super().menu_display()
 
-    BOTTOM_BUTTON_HEIGHT = 5
+class GroupsMenu(Menu):
+    def get_map(self):
+        return InputMap(
+            {  # inputs (covered by getch)
+                b's': lambda: state(MSIDE, MSIDE_LEFT if not is_state(MSIDE, MSIDE_LEFT) else MSIDE_UNDECIDED) or state(
+                    MINDEX, 0),
+                b'l': lambda: state(MSIDE,
+                                    MSIDE_RIGHT if not is_state(MSIDE, MSIDE_RIGHT) else MSIDE_UNDECIDED) or state(
+                    MINDEX, 0),
+                b' ': lambda: state(FGRPS, int(state(MSIDE) > 0)) or state(FGRP, state(MINDEX)) or FUNCTIONS[ASSGN](),
+                UP: lambda: state(MINDEX, max(MINDEX_START,
+                                              state(MINDEX) - 1) if not is_state(MSIDE, MSIDE_UNDECIDED) else state(
+                    MINDEX)),
+                DOWN: lambda: state(MINDEX,
+                                    min(len(active_groups() if is_state(MSIDE, MSIDE_LEFT) else inactive_groups()) - 1,
+                                        state(MINDEX) + 1) if not is_state(MSIDE, MSIDE_UNDECIDED) else state(MINDEX))
+                #    b'a': actions_menu,
+                #    b'e': conditions_menu,
+                #    b's': scheduler_menu,
+            },
+            {  # commands (inputted manually)
+                #    'qt': quit_menu,
+                #    'cl': clear_all_data,
+            })
+    def menu_display(self):
+        box = super().menu_display()
+        BOX_HEIGHT = 6
 
-    boxes_per_page = int((box.h - BOTTOM_BUTTON_HEIGHT) / BOX_HEIGHT)
-    page = state(MINDEX) // boxes_per_page
+        w, h = state(WIDTH), state(LNGTH)
+        box.place_vbar(box.w // 2 - padding // 2, box.w // 2 + padding // 2)
+        box.place_hcenter_text("Groups List", 0)
 
-    y, i = 1, boxes_per_page * page
-    bu = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, 1))
-    if len(active_groups()) > i:
-        bu.loadup(active_groups()[i])
-        if is_state(MSIDE, MSIDE_LEFT) and is_state(MINDEX, i ):
-            bu.set_border('*')
-    bu.place_hcenter_text('Activated-Groups', 0)
+        button_y = 1
+        button_h = 2
 
-    bf = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, box.w // 2 + padding // 2 + 2))
-    if len(inactive_groups()) > i:
-        bf.loadup(inactive_groups()[i])
-        if is_state(MSIDE, MSIDE_RIGHT) and is_state(MINDEX, i):
-            bf.set_border('*')
-    bf.place_hcenter_text('Inactivated-Groups', 0)
+        def BUTTON_Y_POSITION():
+            nonlocal button_y
+            delta = button_h + 2
+            y = button_y
+            button_y += delta
+            return y
 
-    while y + BOX_HEIGHT < box.h - BOTTOM_BUTTON_HEIGHT:
-        i += 1
-        y += BOX_HEIGHT
+        box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
+            "Add Group",
+            1, "(G)", 2)
+        box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
+            "Actions", 1, "(A)", 2)
 
+        box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
+            "Clear All", 1, "(:cl)", 2)
+        box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
+            "Scheduler", 1, "(S)", 2)
+        box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
+            "Save & Quit Planner", 1, "(:qt)", 2)
+
+        BOTTOM_BUTTON_HEIGHT = 5
+
+        boxes_per_page = int((box.h - BOTTOM_BUTTON_HEIGHT) / BOX_HEIGHT)
+        page = state(MINDEX) // boxes_per_page
+
+        y, i = 1, boxes_per_page * page
         bu = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, 1))
-        bf = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, box.w // 2 + padding // 2 + 2))
-
-        if i < len(active_groups()):
+        if len(active_groups()) > i:
             bu.loadup(active_groups()[i])
             if is_state(MSIDE, MSIDE_LEFT) and is_state(MINDEX, i):
                 bu.set_border('*')
+        bu.place_hcenter_text('Activated-Groups', 0)
 
-        if i < len(inactive_groups()):
+        bf = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, box.w // 2 + padding // 2 + 2))
+        if len(inactive_groups()) > i:
             bf.loadup(inactive_groups()[i])
             if is_state(MSIDE, MSIDE_RIGHT) and is_state(MINDEX, i):
                 bf.set_border('*')
+        bf.place_hcenter_text('Inactivated-Groups', 0)
 
-    BOX_TO_ARROW_RATIO = 5
-    box_width = box.w // 2 - padding // 2 - 2
-    if not TRIGGER_COMMANDS['hdnv']:
+        while y + BOX_HEIGHT < box.h - BOTTOM_BUTTON_HEIGHT:
+            i += 1
+            y += BOX_HEIGHT
+
+            bu = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, 1))
+            bf = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, box.w // 2 + padding // 2 + 2))
+
+            if i < len(active_groups()):
+                bu.loadup(active_groups()[i])
+                if is_state(MSIDE, MSIDE_LEFT) and is_state(MINDEX, i):
+                    bu.set_border('*')
+
+            if i < len(inactive_groups()):
+                bf.loadup(inactive_groups()[i])
+                if is_state(MSIDE, MSIDE_RIGHT) and is_state(MINDEX, i):
+                    bf.set_border('*')
+
+        BOX_TO_ARROW_RATIO = 5
+        box_width = box.w // 2 - padding // 2 - 2
+        if not TRIGGER_COMMANDS['hdnv']:
+            arrows = box.place_box(box_width, BOTTOM_BUTTON_HEIGHT, (box.h - BOTTOM_BUTTON_HEIGHT, 1))
+            arrows.place_hcenter_text("Navigate", 0)
+
+            select = arrows.place_box(box_width * 2 // BOX_TO_ARROW_RATIO - 1, BOTTOM_BUTTON_HEIGHT - 2,
+                                      (1,
+                                       arrows.w - 3 * box_width // BOX_TO_ARROW_RATIO - box_width // 2 // BOX_TO_ARROW_RATIO - 1))
+            select.place_hcenter_text('Index', ceil(select.h // 2))
+            select.place_center_text('(S)')
+            select.place_hcenter_text('Through', ceil(select.h // 2) + 2)
+            #    ("(<)" + '-' * (box_width - 10) + "(>)\n") +
+            #    ("(<)" + "-Prev Page" + '-' * (box_width - 30) + "-Next Page" + "(>)\n") +
+            #    ("(<)" + '-' * (box_width - 10) + "(>)\n"))
+
+            arrows = box.place_box(box_width, BOTTOM_BUTTON_HEIGHT,
+                                   (box.h - BOTTOM_BUTTON_HEIGHT, box.w - box_width - 1))
+            arrows.place_hcenter_text("Navigate", 0)
+            select = arrows.place_box(box_width * 2 // BOX_TO_ARROW_RATIO - 1, BOTTOM_BUTTON_HEIGHT - 2,
+                                      (1,
+                                       arrows.w - 3 * box_width // BOX_TO_ARROW_RATIO - box_width // 2 // BOX_TO_ARROW_RATIO - 1))
+            select.place_hcenter_text('Index', ceil(select.h // 2))
+            select.place_center_text('(L)')
+            select.place_hcenter_text('Through', ceil(select.h // 2) + 2)
+        return box
+
+class AssignmentsMenu(Menu):
+    def pop_if(self) -> bool:
+        return is_state(FGRP, NO_FOCUSED_GROUP)
+    def __init__(self):
+        super().__init__()
+
+    def show(self):
+        super().show()
+    def menu_display(self):
+        focused = groups[state(FGRPS)][state(FGRP)]
+
+        if is_trigger(POP):
+            trigger(POP)
+            return
+
+        BOX_HEIGHT = 5
+
+        w, h = state(WIDTH), state(LNGTH)
+        box = get_box(w, h)
+        box.place_hbar(0)
+        box.place_vbar(box.w // 2 - padding // 2, box.w // 2 + padding // 2)
+        if len(focused.name) % 2 == 0:
+            box.place_hcenter_text("Assignments-of-" + focused.name.replace(" ", "-"), 0)
+        else:
+            box.place_hcenter_text("Assignments-for-" + focused.name.replace(" ", "-"), 0)
+
+        button_y = 1
+        button_h = 1
+
+        def BUTTON_Y_POSITION():
+            nonlocal button_y
+            delta = button_h + 2
+            y = button_y
+            button_y += delta
+            return y + 1
+
+        box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
+            "Create Assignment (C)", 1)
+        box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
+            "Actions (A)", 1)
+
+        box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
+            "Clear All (:cl)", 1)
+        box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
+            "Scheduler (S)", 1)
+        box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
+            "Groups List (G)", 1)
+        box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
+            "Save & Quit Planner (:qt)", 1)
+        # todo: : commands prompt normal input instead of getch
+        BOTTOM_BUTTON_HEIGHT = 5
+
+        y, i = 1, 0
+        bu = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, 1))
+        bu.place_hcenter_text('Unfinished-Assignments', 0)
+        bf = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, box.w // 2 + padding // 2 + 2))
+        bf.place_hcenter_text('Finished-Assignments', 0)
+
+        while y < box.h - BOTTOM_BUTTON_HEIGHT:
+            if i < len(focused.in_progress):
+                bu.loadup(focused.in_progress[i])
+
+            if i < len(focused.completed):
+                bf.loadup(focused.completed[i])
+
+            i += 1
+            y += BOX_HEIGHT
+
+            bu = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, 1))
+            bf = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, box.w // 2 + padding // 2 + 2))
+
+        BOX_TO_ARROW_RATIO = 4
+        box_width = box.w // 2 - padding // 2 - 2
         arrows = box.place_box(box_width, BOTTOM_BUTTON_HEIGHT, (box.h - BOTTOM_BUTTON_HEIGHT, 1))
         arrows.place_hcenter_text("Navigate", 0)
+        arrows.place_box(box_width // BOX_TO_ARROW_RATIO, BOTTOM_BUTTON_HEIGHT - 2, (1, 1)).place_center_text(
+            f'<<<<<\n<({BACK_LEFT})<\n<<<<<')  # .place_center_text(
+        arrows.place_box(box_width // BOX_TO_ARROW_RATIO, BOTTOM_BUTTON_HEIGHT - 2,
+                         (1, arrows.w - box_width // BOX_TO_ARROW_RATIO - 1)).place_center_text(
+            f'>>>>>\n>({NEXT_LEFT})>\n>>>>>')
 
-        select = arrows.place_box(box_width * 2 // BOX_TO_ARROW_RATIO - 1, BOTTOM_BUTTON_HEIGHT - 2,
-                         (1, arrows.w - 3 * box_width // BOX_TO_ARROW_RATIO - box_width // 2 // BOX_TO_ARROW_RATIO - 1))
-        select.place_hcenter_text('Index', ceil(select.h // 2))
-        select.place_center_text('(S)')
-        select.place_hcenter_text('Through', ceil(select.h // 2) + 2)
         #    ("(<)" + '-' * (box_width - 10) + "(>)\n") +
         #    ("(<)" + "-Prev Page" + '-' * (box_width - 30) + "-Next Page" + "(>)\n") +
         #    ("(<)" + '-' * (box_width - 10) + "(>)\n"))
 
         arrows = box.place_box(box_width, BOTTOM_BUTTON_HEIGHT, (box.h - BOTTOM_BUTTON_HEIGHT, box.w - box_width - 1))
         arrows.place_hcenter_text("Navigate", 0)
-        select = arrows.place_box(box_width * 2 // BOX_TO_ARROW_RATIO - 1, BOTTOM_BUTTON_HEIGHT - 2,
-                         (1, arrows.w - 3 * box_width // BOX_TO_ARROW_RATIO - box_width // 2 // BOX_TO_ARROW_RATIO - 1))
-        select.place_hcenter_text('Index', ceil(select.h // 2))
-        select.place_center_text('(L)')
-        select.place_hcenter_text('Through', ceil(select.h // 2) + 2)
-    print(box.bake())
+        arrows.place_box(box_width // BOX_TO_ARROW_RATIO, BOTTOM_BUTTON_HEIGHT - 2, (1, 1)).place_center_text(
+            f'<<<<<\n<({BACK_RIGHT})<\n<<<<<')  # .place_center_text(
+        arrows.place_box(box_width // BOX_TO_ARROW_RATIO, BOTTOM_BUTTON_HEIGHT - 2,
+                         (1, arrows.w - box_width // BOX_TO_ARROW_RATIO - 1)).place_center_text(
+            f'>>>>>\n>({NEXT_RIGHT})>\n>>>>>')
 
-    # We want to have it so that each menu has its own input scheme
-    # with different effects.
-
-    # We could have a map of inputs that stores functions
-    # arranged by input key (bytes objects?).
-
-    # For example, the prototype for the Groups Menu would be the following:
-
-    input_map = InputMap(
-    { # inputs (covered by getch)
-        b's': lambda: state(MSIDE, MSIDE_LEFT if not is_state(MSIDE, MSIDE_LEFT) else MSIDE_UNDECIDED) or state(MINDEX, 0),
-        b'l': lambda: state(MSIDE, MSIDE_RIGHT if not is_state(MSIDE, MSIDE_RIGHT) else MSIDE_UNDECIDED) or state(MINDEX, 0),
-        b' ': lambda: state(FGRPS, int(state(MSIDE) > 0)) or state(FGRP, state(MINDEX)) or FUNCTIONS[ASSGN](),
-        UP: lambda: state(MINDEX, max(MINDEX_START,
-                                      state(MINDEX) - 1) if not is_state(MSIDE, MSIDE_UNDECIDED) else state(MINDEX)),
-        DOWN: lambda: state(MINDEX, min(len(active_groups() if is_state(MSIDE, MSIDE_LEFT) else inactive_groups()) - 1,
-                                      state(MINDEX) + 1) if not is_state(MSIDE, MSIDE_UNDECIDED) else state(MINDEX))
-    #    b'a': actions_menu,
-    #    b'e': conditions_menu,
-    #    b's': scheduler_menu,
-    },
-    { # commands (inputted manually)
-    #    'qt': quit_menu,
-    #    'cl': clear_all_data,
-    })
-    input_map.run()
-
-    groups_menu()  # groups_menu is always the starting point of the program
+        return box
+    def get_map(self):
+        return InputMap(
+            {  # inputs (covered by getch)
+                b's': lambda: state(MSIDE, MSIDE_LEFT if not is_state(MSIDE, MSIDE_LEFT) else MSIDE_UNDECIDED),
+                b'l': lambda: state(MSIDE, MSIDE_RIGHT if not is_state(MSIDE, MSIDE_RIGHT) else MSIDE_UNDECIDED),
+                b'g': lambda: trigger(POP) or trigger(REFRS),
+                UP: lambda: state(MINDEX,
+                                  min(len(active_groups() if is_state(MSIDE, MSIDE_LEFT) else inactive_groups()),
+                                      state(MINDEX) + 1) if not is_state(MSIDE, MSIDE_UNDECIDED) else MINDEX),
+                DOWN: lambda: state(MINDEX, max(MINDEX_START, state(MINDEX) - 1) if not is_state(MSIDE,
+                                                         MSIDE_UNDECIDED) else MINDEX),
+                b'c': lambda: FUNCTIONS[ADA](),
+                #    b'e': conditions_menu,
+                #    b's': scheduler_menu,
+            },
+            {  # commands (inputted manually)
+                #    'qt': quit_menu,
+                #    'cl': clear_all_data,
+            })
 
 
-
-def assignments_menu():
-    if is_state(FGRP, NO_FOCUSED_GROUP):
-        return  # will return to group menu
-    focused = groups[state(FGRPS)][state(FGRP)]
-
-    if is_trigger(POP):
-        trigger(POP)
-        return
-
-    clear()
-    BOX_HEIGHT = 5
-
-    w, h = state(WIDTH), state(LNGTH)
-    box = get_box(w, h)
-    box.place_hbar(0)
-    box.place_vbar(box.w // 2 - padding // 2, box.w // 2 + padding // 2)
-    if len(focused.name) % 2 == 0:
-        box.place_hcenter_text("Assignments-of-" + focused.name.replace(" ", "-"), 0)
-    else:
-        box.place_hcenter_text("Assignments-for-" + focused.name.replace(" ", "-"), 0)
-
-    button_y = 1
-    button_h = 1
-
-    def BUTTON_Y_POSITION():
-        nonlocal button_y
-        delta = button_h + 2
-        y = button_y
-        button_y += delta
-        return y + 1
-
-    box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
-        "Create Assignment (C)", 1)
-    box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
-        "Actions (A)", 1)
-
-    box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
-        "Clear All (:cl)", 1)
-    box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
-        "Scheduler (S)", 1)
-    box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
-        "Groups List (G)", 1)
-    box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
-        "Save & Quit Planner (:qt)", 1)
-    # todo: : commands prompt normal input instead of getch
-    BOTTOM_BUTTON_HEIGHT = 5
-
-    y, i = 1, 0
-    bu = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, 1))
-    bu.place_hcenter_text('Unfinished-Assignments', 0)
-    bf = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, box.w // 2 + padding // 2 + 2))
-    bf.place_hcenter_text('Finished-Assignments', 0)
-
-    while y < box.h - BOTTOM_BUTTON_HEIGHT:
-        if i < len(focused.in_progress):
-            bu.loadup(focused.in_progress[i])
-
-        if i < len(focused.completed):
-            bf.loadup(focused.completed[i])
-
-        i += 1
-        y += BOX_HEIGHT
-
-        bu = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, 1))
-        bf = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, box.w // 2 + padding // 2 + 2))
-
-    BOX_TO_ARROW_RATIO = 4
-    box_width = box.w // 2 - padding // 2 - 2
-    arrows = box.place_box(box_width, BOTTOM_BUTTON_HEIGHT, (box.h - BOTTOM_BUTTON_HEIGHT, 1))
-    arrows.place_hcenter_text("Navigate", 0)
-    arrows.place_box(box_width // BOX_TO_ARROW_RATIO, BOTTOM_BUTTON_HEIGHT - 2, (1, 1)).place_center_text(
-        f'<<<<<\n<({BACK_LEFT})<\n<<<<<')  # .place_center_text(
-    arrows.place_box(box_width // BOX_TO_ARROW_RATIO, BOTTOM_BUTTON_HEIGHT - 2,
-                     (1, arrows.w - box_width // BOX_TO_ARROW_RATIO - 1)).place_center_text(
-        f'>>>>>\n>({NEXT_LEFT})>\n>>>>>')
-
-    #    ("(<)" + '-' * (box_width - 10) + "(>)\n") +
-    #    ("(<)" + "-Prev Page" + '-' * (box_width - 30) + "-Next Page" + "(>)\n") +
-    #    ("(<)" + '-' * (box_width - 10) + "(>)\n"))
-
-    arrows = box.place_box(box_width, BOTTOM_BUTTON_HEIGHT, (box.h - BOTTOM_BUTTON_HEIGHT, box.w - box_width - 1))
-    arrows.place_hcenter_text("Navigate", 0)
-    arrows.place_box(box_width // BOX_TO_ARROW_RATIO, BOTTOM_BUTTON_HEIGHT - 2, (1, 1)).place_center_text(
-        f'<<<<<\n<({BACK_RIGHT})<\n<<<<<')  # .place_center_text(
-    arrows.place_box(box_width // BOX_TO_ARROW_RATIO, BOTTOM_BUTTON_HEIGHT - 2,
-                     (1, arrows.w - box_width // BOX_TO_ARROW_RATIO - 1)).place_center_text(
-        f'>>>>>\n>({NEXT_RIGHT})>\n>>>>>')
-    print(box.bake())
-
-    # We want to have it so that each menu has its own input scheme
-    # with different effects.
-
-    # We could have a map of inputs that stores functions
-    # arranged by input key (bytes objects?).
-
-    # For example, the prototype for the Groups Menu would be the following:
-
-    input_map = InputMap(
-        {  # inputs (covered by getch)
-            b's': lambda: state(MSIDE, MSIDE_LEFT if not is_state(MSIDE, MSIDE_LEFT) else MSIDE_UNDECIDED),
-            b'l': lambda: state(MSIDE, MSIDE_RIGHT if not is_state(MSIDE, MSIDE_RIGHT) else MSIDE_UNDECIDED),
-            b'g': lambda: trigger(POP) or trigger(REFRS),
-            UP: lambda: state(MINDEX, min(len(active_groups() if is_state(MSIDE, MSIDE_LEFT) else inactive_groups()), state(MINDEX) + 1) if not is_state(MSIDE, MSIDE_UNDECIDED) else MINDEX),
-            DOWN: lambda: state(MINDEX, max(MINDEX_START, state(MINDEX) - 1) if not is_state(MSIDE, MSIDE_UNDECIDED) else MINDEX)
-            #    b'a': actions_menu,
-            #    b'e': conditions_menu,
-            #    b's': scheduler_menu,
-        },
-        {  # commands (inputted manually)
-            #    'qt': quit_menu,
-            #    'cl': clear_all_data,
-        })
-
-    input_map.run()
-
-    assignments_menu()  # groups_menu is always the starting point of the program
-
-
-def quit_menu():
-    if is_trigger(POP):
-        trigger(POP)
-        return
-
-    clear()
-    BOX_HEIGHT = 5
-
-    w, h = state(WIDTH), state(LNGTH)
-    box = get_box(w, h)
-    box.set_border('*')
-    bx = box.place_box(w // 2, h // 3, (h // 3, state(WIDTH) // 4)).set_border('*')
-    bx.place_hcenter_text("Are you sure you want to quit?", bx.h // 2 - 1, "Quit (Y)", bx.h // 2, "Return (N)", bx.h // 2 + 1)
-    print(box.bake())
-
-    input_map = InputMap(
+class QuitMenu(Menu):
+    def get_map(self):
+        return InputMap(
         {  # inputs (covered by getch)
             b'y': lambda: quit(0),
             b'n': lambda: trigger(POP) or trigger(REFRS)
@@ -612,10 +698,303 @@ def quit_menu():
             #    'qt': quit_menu,
             #    'cl': clear_all_data,
         })
+    def __init__(self):
+        super().__init__()
+    def show(self):
+        super().show()
 
-    input_map.run()
+    def menu_display(self):
+        w, h = state(WIDTH), state(LNGTH)
+        box = get_box(w, h)
+        box.set_border('*')
+        bx = box.place_box(w // 2, h // 3, (h // 3, state(WIDTH) // 4)).set_border('*')
+        bx.place_hcenter_text("Are you sure you want to quit?", bx.h // 2 - 1, "Quit (Y)", bx.h // 2, "Return (N)",
+                              bx.h // 2 + 1)
+        return box
 
-    quit_menu()
+
+BUTTON_COLUMN, FIELD_COLUMN = 1, 2
+class AssignmentEditor(Menu):
+    def on_space(self):
+        if is_state(MSIDE, 2):
+            get_field(self.caption_fields[state(MINDEX)])
+            self.find_index(1)
+        elif is_state(MSIDE, 1):
+            if self.enabled[state(MINDEX)] is not None:
+                self.enabled[state(MINDEX)] = not self.enabled[state(MINDEX)]
+
+    def find_index(self, delta: int):
+        d = delta // abs(delta)
+        i = state(MINDEX)
+        if is_state(MSIDE, BUTTON_COLUMN):
+            while True:
+                i += d
+                if 0 <= i < len(self.enabled):
+                    if self.enabled[i] is not None:
+                        state(MINDEX, i)
+                        return
+                else:
+                    return
+        elif is_state(MSIDE, FIELD_COLUMN):
+            while True:
+                i += d
+                if 0 <= i < len(self.enabled):
+                    if self.enabled[i] is not False:
+                        state(MINDEX, i)
+                        return
+                else:
+                    return
+
+    def switch_sides(self, side: int):
+        state(MSIDE, side)
+        if is_state(MSIDE, BUTTON_COLUMN):
+            if self.enabled[state(MINDEX)] is None:
+                i = state(MINDEX)  # we default to the top button
+                for n in range(1, len(self.enabled)):
+                    if 0 <= i + n < len(self.enabled):
+                        if self.enabled[i + n] is not None:
+                            state(MINDEX, i + n)
+                            return
+
+                    if 0 <= i - n < len(self.enabled):
+                        if self.enabled[i - n] is not None:
+                            state(MINDEX, i - n)
+                            return
+
+        if is_state(MSIDE, FIELD_COLUMN):
+            if self.enabled[state(MINDEX)] is False:
+                i = state(MINDEX)  # we default to the top button
+                for n in range(1, len(self.enabled)):
+                    if 0 <= i + n < len(self.enabled):
+                        if self.enabled[i + n] is not False:
+                            state(MINDEX, i + n)
+                            return
+
+                    if 0 <= i - n < len(self.enabled):
+                        if self.enabled[i - n] is not False:
+                            state(MINDEX, i - n)
+                            return
+
+    def on_any_key(self, key):
+        if is_state(MSIDE, FIELD_COLUMN):
+            if key != b'\r':
+                if key != b'\x08':
+                    self.caption_fields[state(MINDEX)].type(key)
+                else:
+                    self.caption_fields[state(MINDEX)].text = ""
+            self.on_space()
+
+
+    def get_map(self):
+        return InputMap({
+            ANY_KEY: self.on_any_key,
+            UP: lambda: self.find_index(-1),  # state(MINDEX, clamp(state(MINDEX) - 1, 0, len(captions) - 1)),
+            DOWN: lambda: self.find_index(1),  # state(MINDEX, clamp(state(MINDEX) + 1, 0, len(captions) - 1)),
+            RIGHT: lambda: self.switch_sides(FIELD_COLUMN),
+            LEFT: lambda: self.switch_sides(BUTTON_COLUMN),
+            b'\r': self.on_space
+        }, {})
+    def __init__(self):
+        super().__init__()
+        self.fields: list[InputField] = [
+            # Name, Description, Start Date, Due Date, Due Date Postincrement
+        ]
+        self.actives: list[bool] = []
+        self.enabled = [None, True, True, True, False]
+
+        self.captions = {
+            "Name": 30,
+            "Description": 90,
+            "Due Date": 20,  # YY-MM-DD hh:mm:ss (DateTime)
+            "Start Date": 20,
+            "Date Increment": 20,  # MM-WW-DD-hh-mm-ss (TimeSpan)
+        }
+        self.caption_fields: list[InputField] = []
+
+        for i, caption in enumerate(self.captions):
+            field = InputField(self.captions[caption], 1, [1, 2])
+            self.caption_fields.append(field)
+
+    def menu_display(self):
+        screen_share = 2 / 3
+        box_length = 3
+        margin_x = 2
+
+        bx = Box(133, 20)
+        bx.place_hbar(0, 19)
+        bx.place_vbar(0, 132)
+
+        BUTTON_COLUMN, FIELD_COLUMN = 1, 2
+
+        BOX_HEIGHT = 3
+        OBJECT_SPACEOUT = 1 + margin_x + box_length * 2 + 1
+        for i, caption in enumerate(self.captions):
+            if self.enabled[i] is not None:
+                active = bx.place_box(box_length, 1, ((i + 1) * BOX_HEIGHT - 1, 1 + margin_x))
+                if self.enabled[i]:
+                    active.place_center_text('X')
+                if is_state(MSIDE, BUTTON_COLUMN) and is_state(MINDEX, i):
+                    active.set_border('*')
+            elif is_state(MSIDE, BUTTON_COLUMN) and is_state(MINDEX, i):
+                state(MINDEX, state(MINDEX) + 1)  # +=1 until reach one that has a trigger
+
+            name = caption + ": "
+            bx.place_text(name, ((i + 1) * BOX_HEIGHT, 1 + OBJECT_SPACEOUT))
+
+            field = self.caption_fields[i]
+            bx.place(field,
+                     ((i + 1) * BOX_HEIGHT - 1, 2 + OBJECT_SPACEOUT + len(caption) + 1))  # name
+
+            field.set_border_default()
+            if is_state(MSIDE, FIELD_COLUMN):
+                if i == state(MINDEX):
+                    if self.enabled[i] or self.enabled[i] is None:
+                        field.set_border('*')
+                    else:
+                        state(MINDEX, state(MINDEX) - 1)
+        return bx
+
+
+BUTTON_COLUMN, FIELD_COLUMN = 1, 2
+class AssignmentEditor(Menu):
+    def on_space(self):
+        if is_state(MSIDE, 2):
+            get_field(self.caption_fields[state(MINDEX)])
+            self.find_index(1)
+        elif is_state(MSIDE, 1):
+            if self.enabled[state(MINDEX)] is not None:
+                self.enabled[state(MINDEX)] = not self.enabled[state(MINDEX)]
+
+    def find_index(self, delta: int):
+        d = delta // abs(delta)
+        i = state(MINDEX)
+        if is_state(MSIDE, BUTTON_COLUMN):
+            while True:
+                i += d
+                if 0 <= i < len(self.enabled):
+                    if self.enabled[i] is not None:
+                        state(MINDEX, i)
+                        return
+                else:
+                    return
+        elif is_state(MSIDE, FIELD_COLUMN):
+            while True:
+                i += d
+                if 0 <= i < len(self.enabled):
+                    if self.enabled[i] is not False:
+                        state(MINDEX, i)
+                        return
+                else:
+                    return
+
+    def switch_sides(self, side: int):
+        state(MSIDE, side)
+        if is_state(MSIDE, BUTTON_COLUMN):
+            if self.enabled[state(MINDEX)] is None:
+                i = state(MINDEX)  # we default to the top button
+                for n in range(1, len(self.enabled)):
+                    if 0 <= i + n < len(self.enabled):
+                        if self.enabled[i + n] is not None:
+                            state(MINDEX, i + n)
+                            return
+
+                    if 0 <= i - n < len(self.enabled):
+                        if self.enabled[i - n] is not None:
+                            state(MINDEX, i - n)
+                            return
+
+        if is_state(MSIDE, FIELD_COLUMN):
+            if self.enabled[state(MINDEX)] is False:
+                i = state(MINDEX)  # we default to the top button
+                for n in range(1, len(self.enabled)):
+                    if 0 <= i + n < len(self.enabled):
+                        if self.enabled[i + n] is not False:
+                            state(MINDEX, i + n)
+                            return
+
+                    if 0 <= i - n < len(self.enabled):
+                        if self.enabled[i - n] is not False:
+                            state(MINDEX, i - n)
+                            return
+
+    def on_any_key(self, key):
+        if is_state(MSIDE, FIELD_COLUMN):
+            if key != b'\r':
+                if key != b'\x08':
+                    self.caption_fields[state(MINDEX)].type(key)
+                else:
+                    self.caption_fields[state(MINDEX)].text = ""
+            self.on_space()
+
+
+    def get_map(self):
+        return InputMap({
+            ANY_KEY: self.on_any_key,
+            UP: lambda: self.find_index(-1),  # state(MINDEX, clamp(state(MINDEX) - 1, 0, len(captions) - 1)),
+            DOWN: lambda: self.find_index(1),  # state(MINDEX, clamp(state(MINDEX) + 1, 0, len(captions) - 1)),
+            RIGHT: lambda: self.switch_sides(FIELD_COLUMN),
+            LEFT: lambda: self.switch_sides(BUTTON_COLUMN),
+            b'\r': self.on_space
+        }, {})
+    def __init__(self):
+        super().__init__()
+        self.fields: list[InputField] = [
+            # Name, Description, Start Date, Due Date, Due Date Postincrement
+        ]
+        self.actives: list[bool] = []
+        self.enabled = [None, True, True, True, False]
+
+        self.captions = {
+            "Name": 30,
+            "Description": 90,
+            "Due Date": 20,  # YY-MM-DD hh:mm:ss (DateTime)
+            "Start Date": 20,
+            "Date Increment": 20,  # MM-WW-DD-hh-mm-ss (TimeSpan)
+        }
+        self.caption_fields: list[InputField] = []
+
+        for i, caption in enumerate(self.captions):
+            field = InputField(self.captions[caption], 1, [1, 2])
+            self.caption_fields.append(field)
+
+    def menu_display(self):
+        screen_share = 2 / 3
+        box_length = 3
+        margin_x = 2
+
+        bx = Box(133, 20)
+        bx.place_hbar(0, 19)
+        bx.place_vbar(0, 132)
+
+        BUTTON_COLUMN, FIELD_COLUMN = 1, 2
+
+        BOX_HEIGHT = 3
+        OBJECT_SPACEOUT = 1 + margin_x + box_length * 2 + 1
+        for i, caption in enumerate(self.captions):
+            if self.enabled[i] is not None:
+                active = bx.place_box(box_length, 1, ((i + 1) * BOX_HEIGHT - 1, 1 + margin_x))
+                if self.enabled[i]:
+                    active.place_center_text('X')
+                if is_state(MSIDE, BUTTON_COLUMN) and is_state(MINDEX, i):
+                    active.set_border('*')
+            elif is_state(MSIDE, BUTTON_COLUMN) and is_state(MINDEX, i):
+                state(MINDEX, state(MINDEX) + 1)  # +=1 until reach one that has a trigger
+
+            name = caption + ": "
+            bx.place_text(name, ((i + 1) * BOX_HEIGHT, 1 + OBJECT_SPACEOUT))
+
+            field = self.caption_fields[i]
+            bx.place(field,
+                     ((i + 1) * BOX_HEIGHT - 1, 2 + OBJECT_SPACEOUT + len(caption) + 1))  # name
+
+            field.set_border_default()
+            if is_state(MSIDE, FIELD_COLUMN):
+                if i == state(MINDEX):
+                    if self.enabled[i] or self.enabled[i] is None:
+                        field.set_border('*')
+                    else:
+                        state(MINDEX, state(MINDEX) - 1)
+        return bx
 
 
 commands = ('cl', 'qt')
@@ -629,7 +1008,7 @@ def run(output: bool, *cmdss: list[str]):
             TRIGGER_COMMANDS[cmd] = not TRIGGER_COMMANDS[cmd]
             #  trigger(REFRS, True)  # refresh the screen
             return None
-        elif cmd in STATE_COMMANDS:
+        elif cmd in STATE_COMMANDS and len(cmds) > 1:
             STATE_COMMANDS[cmd] = int(cmds[1])
         elif cmd in FUNCTIONS:
             prms = cmds[1:]
@@ -648,26 +1027,12 @@ def run(output: bool, *cmdss: list[str]):
             return cmds[0]
 
 
-class Direction:
-    DIRS = (
-        (-1, 0),
-        (1, 0),
-        (0, 1),
-        (0, -1)
-    )
-    def __init__(self, dir):
-        self.dir = Direction.DIRS[dir]
-
-
-UP = b'\xe0H'
-RIGHT = b'\xe0M'
-DOWN = b'\xe0P'
-LEFT = b'\xe0K'
-def get_input(init: str = "") -> Union[bytes, str, Direction, None]:
+def get_input(init: str = "", **specials) -> Union[bytes, str, None]:
     # if TRIGGER_COMMANDS[REFRS]:
     #    trigger(REFRS)
     #    return None
 
+    block_cmds = specials.get('block_cmds', False)
     print('-:> ', end="")
     key = getch() if not init else init[0].encode('ascii')
 
@@ -676,7 +1041,7 @@ def get_input(init: str = "") -> Union[bytes, str, Direction, None]:
         spcl = getch()
         print('\r', end="")
         return key + spcl
-    elif key == b':':
+    elif key == b':' and not block_cmds:
         MAX_COMMAND_SIZE: int = 5
         print('\r', end="")
         prompt = "-:> :"
@@ -761,27 +1126,32 @@ STATE_COMMANDS = {
 
 
 GROUP = 'group'
+group_menu = GroupsMenu()
 ASSGN = 'assgn'
+assignments_menu = AssignmentsMenu()
 QT = 'qt'
+quit_menu = QuitMenu()
 ADA = 'ada'
+assignment_editor = AssignmentEditor()
 OUTPT = 'outpt'
 FQT = 'fqt'
 TRIGG = 'trigg'
 ATRIG = 'atrig'
 FUNCTIONS = {
-    GROUP: groups_menu,
-    ASSGN: assignments_menu,
-    QT: quit_menu,
+    GROUP: group_menu.show,
+    ASSGN: assignments_menu.show,
+    QT: quit_menu.show,
     FQT: lambda: quit(0),
     OUTPT: input,
     TRIGG : lambda: input("".join(['(' + i + ')' for i in TRIGGER_COMMANDS if is_trigger(i)])),
     ATRIG : lambda: input("".join(['(' + i + ')' for i in TRIGGER_COMMANDS if not is_trigger(i)])),
-    # ADA: assignment_editor  # goes to assignment editor
+    ADA: assignment_editor.show,  # goes to assignment editor
 }
 
 
 COMMAND_HISTORY = []
 
+MENU: Menu = None
 STARTING_DIMENSIONS = ("20", "133")
 run(False,
     ["lngth", STARTING_DIMENSIONS[0]],
@@ -791,11 +1161,102 @@ run(False,
 def ui():
     while True:
         try:
-            groups_menu()
+            group_menu.show()
         except Exception as e:
             print(e)
             header = "COMMAND HISTORY"
-            print(header, '-' * len(header), *COMMAND_HISTORY, '-' * len(header), sep="\n")
-            if get_input() == "show":
+            print('-' * len(header),
+                  header,
+                  '-' * len(header),
+                  *COMMAND_HISTORY,
+                  '-' * len(header), sep="\n")
+            if get_input(':') == "catch":
                 raise e
+
+
+reset_menu_selection()
+
+
+"""
+What must we do to have an Input Field system?
+
+We need to do the following steps when the user chooses an Input Field (by any
+means offered by a menu)
+
+1. We need to assign a Field
+2. We need to enable the inputting of that field by the use of getch() (while loop)
+3. We need to update the screen based on the characters inputted via step 2
+
+How can we write this algorithm, then?
+
+1. We need to have a function that is called upon selecting an input field.
+2. We need to capture our current menu.
+3. We need to have a while loop that iterates every time getch() is called successfully.
+4. The while loop must terminate when getch() == b'\r' (carriage return).
+
+Say we have the following box bx.
+bx = Box(133, 20)
+
+bx has an input field field at the top right corner.
+field = InputField(20, 1), (1, 1)
+bx.place(field)
+
+The input map of the menu of bx gives the option to select field by pressing the spacebar
+key.
+
+When field is selected, the getch() while starts.
+
+
+while True:
+    ch = getch()
+    if ch == b'\xe0': # special char
+        spec = getch()
+    elif ch == b'\r':
+        break
+    else:
+        field.type(ch)
+
+"""
+
+
+# todo: callback on finish
+# assumption: field is a single line input field
+def get_field(field: InputField):
+    InputField.FIELD = field
+    menu = MENU.menu_display()
+    while True:
+        clear()
+        print(menu.bake())
+        ch = get_input()
+        if isinstance(ch, bytes):
+            if ch == b'\r':
+                InputField.FIELD = None
+                return
+            elif ch == b'\x08':
+                if len(field.text) > 0:
+                    field.delete(1)
+                continue
+            elif len(ch) > 0 and ch[0] == b'\xe0':
+                if ch in (UP, RIGHT, DOWN, LEFT):
+                    continue  # TODO: Indexing through field, moving carat
+                ch = ch[1]
+            char = ch.decode('ascii')
+            field.type(char)
+            print(ch)
+
+
+# Template for Menus that use InputFields.
+# Fields must be cached in order to preserve their states.
+"""
+class InputFieldTemplateMenu(Menu):
+    def __init__(self):
+        super().__init__()
+        self.field = InputField(20, 1)
+    def get_map(self):
+        return InputMap({b' ': lambda: get_field(self.field)}, {})
+    def menu_display(self):
+        bx = super().menu_display()
+        bx.place(self.field, (1, 1))
+        return bx
+"""
 
