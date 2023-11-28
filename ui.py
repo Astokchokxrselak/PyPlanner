@@ -21,6 +21,8 @@ from datetime import datetime
 # WHEN SYMBOLS ARE ABSENT INPUT SEGMENTS [PAIRS OF DIGITS] MUST BE ENTERED AS PAIRS, WITH NUMBERS LESS THAN 10 INCLUDING A LEADING 0
 
 def now(**replacements) -> datetime: 
+    replacements.setdefault('second', 0)
+    replacements.setdefault('microsecond', 0)
     return datetime.now().replace(**replacements)
 
 
@@ -37,7 +39,13 @@ def _parse_date(string: str):
         tokens = string.split(delimiter)
     else: # no delimiter => tokens are packed together => divisible by either 2 or 3
         tokens = []
-        i, token_size = 0, 2 if len(string) % 2 == 0 else 3
+        i = 0
+        if len(string) % 3 == 0:
+            token_size = 3
+        elif len(string) % 2 == 0:
+            token_size = 2
+        else:
+            raise ValueError("Parameter is in an invalid format.")
         while i < len(string):
             tokens.append(string[i:i + token_size])
             i += token_size
@@ -52,14 +60,13 @@ def _parse_date(string: str):
             return now(year=2000 + year, month=month, day=day)
     elif len(start) == 3: # noninferred date path; symbols are specified
         datetkns = {'D':now().day, 'Y':now().year - 2000, 'M':now().month} # day, year, month
-        for tk in tokens:
-            if tokens[-1] in datetkns:
-                tk = tokens[-1]
-                datetkns[tk] = int(tokens[:2])
+        for token in tokens:
+            if token[-1] in datetkns:
+                tk = token[-1]
+                datetkns[tk] = int(token[:2])
         return now(year=2000 + datetkns['Y'], month=datetkns['M'], day=datetkns['D'])
 def parse_date(string: str):
     print(_parse_date(string))
-
 # DATES
 # CONTEXT OF ANNOTATIONS: WHEN USED AS A START/DUE DATE
 #  XXXXXX OR XX(D)XX(D)XX OR XXMXXDXXY (given day of the given month of the given year)
@@ -69,27 +76,74 @@ parse_date("11M24D23Y")
 parse_date("03D21Y10M")
 #  XXY(D)XXM (end of the given month of the current year)
 parse_date("23Y04M")
-parse_date("0205Y")
+parse_date("02M05Y")
 #  XXY(D)XXD (day of the same month in the current year)
 parse_date("12D23Y")
 parse_date("42Y04D")
 #  XXXX OR XXD(D)XXM OR XX(D)XX OR XXDXXM (given day in the given month in the current year)
-parse_date("3008")
+parse_date("0830")
 parse_date("13D/06M")
 parse_date("12M/25D")
 parse_date("04M12D")
-#  XXY (same day and month of the given year)
+#  XXY (current day and month of the given year)
 parse_date("23Y")
-#  XXM (end of the current month of the current year)
+#  XXM (current day of the given month of the current year)
 parse_date("12M")
-#  XXD (day of the current month of the current year)
+#  XXD (given day of the current month of the current year)
 parse_date("24D")
 input()
 
+
+def _parse_time(string: str):
+    delimiter = ''
+    for ch in string:
+        if not ch.isalnum():
+            delimiter = ch
+            break
+    if delimiter:
+        tokens = string.split(delimiter)
+    else: # no delimiter => tokens are packed together => divisible by either 2 or 3
+        tokens = []
+        i = 0
+        if len(string) % 3 == 0:
+            token_size = 3
+        elif len(string) % 2 == 0:
+            token_size = 2
+        else:
+            raise ValueError("Parameter is in an invalid format.")
+        while i < len(string):
+            tokens.append(string[i:i + token_size])
+            i += token_size
+
+    start = tokens[0] # the start must be consistent for the rest of the tokens
+    if len(start) == 2: # inferred time path
+        if len(tokens) == 1:
+            hour = int(tokens[0])
+            return now(hour=hour, minute=59, second=0)
+        if len(tokens) == 2: # hour-minute path
+            hour, minute = int(tokens[0]), int(tokens[1])
+            return now(hour=hour, minute=minute)
+    elif len(start) == 3: # noninferred time path; symbols are specified
+        datetkns = {'H':now().hour, 'M':59} # hour, minute
+        for token in tokens:
+            if token[-1] in datetkns:
+                tk = token[-1]
+                datetkns[tk] = int(token[:2])
+        return now(hour=datetkns['H'], minute=datetkns['M'], second=0, microsecond=0)
+def parse_time(string: str):
+    print(_parse_time(string))
+
 # TIMES
-#  XX(T)XX OR XXHXXM OR XXH(T)XXM (hour)
-#  XX OR XXM (minute of the current hour)
-#  XXH (last minute of the given hour) 
+#  XX(T)XX OR XXHXXM (hour)
+parse_time('1159')
+parse_time('11H59M')
+#  XXM (minute of the current hour)
+parse_time('59M')
+#  XX OR XXH (last minute of the given hour) 
+parse_time('11')
+parse_time('11H')
+input()
+
 
 # DATETIMES
 # [valid date](D)[valid time](T) (self explanatory)
