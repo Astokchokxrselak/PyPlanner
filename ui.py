@@ -280,27 +280,55 @@ class InputField(Box):
     def type(self, char: Union[str, bytes]):
         pos = self.carat
         self.text = self.text[:pos] + (char if isinstance(char, str) else char.decode('ascii')) + self.text[pos:]
-        self.carat += 1  # move the carat forward
+        self.shift_carat(len(char))  # move the carat forward
     def delete(self, del_count: int):
-        self.text = self.text[:self.carat - del_count] + self.text[self.carat:]
-        self.carat -= del_count
+        self.text = self.text[:max(0, self.carat - del_count)] + self.text[self.carat:]
+        self.shift_carat(-del_count)
+
+    def front_carat(self):
+        self.shift_carat(len(self.text))
+
+    def back_carat(self):
+        self.shift_carat(-len(self.text))
+
+    def shift_carat(self, shift_amount: int):
+        self.carat = clamp(self.carat + shift_amount, 0, len(self.text))
+
     def bake(self):
         # if the carat is greater than the length of the box, we need to offset the view
         # by the displacement of the carat from the length of the box
 
         yi, xi = self.carat_origin
-        lentex = min(self.w - xi, len(self.text))
-        offs = len(self.text) - lentex
+        container_width = self.w - xi
+        lentex = min(container_width, len(self.text))  # the amount of characters we are replacing
+        offset = container_width * (self.carat // container_width)
+        if offset != 0:
+            offset -= 1
+
+        print("OFFSET: ", offset)
+        print("TEXX: ", lentex)
+        for x in range(self.w - xi):
+            if x < lentex and x + offset < len(self.text):
+                self.grid[yi][xi + x] = self.text[x + offset]
+            else:
+                self.grid[yi][xi + x] = ' '
+        """
+        # offs = len(self.text) - lentex  # we offset if carat is greater than self.w
 
         # remove ALL carats
-        for x in range(xi, self.true_w - xi + 1):
+        for x in range(lentex):
             if x - xi < lentex:
                 self.grid[yi][x] = self.text[x - xi + offs]
             else:
                 self.grid[yi][x] = ' '
             pass
+        """
         if InputField.FIELD == self:
-            self.grid[yi][xi + min(self.w - xi, self.carat)] = CARAT
+            index = xi + self.carat % container_width
+            if self.carat > container_width:
+                index += 1
+            self.grid[yi][index] = CARAT
+            # self.grid[yi][xi + min(self.w - xi, self.carat)] = CARAT
 
 
         # offs = max(len(self.text) - lentex, 0)
@@ -920,10 +948,12 @@ class AssignmentEditor(Menu):
     def on_any_key(self, key):
         if is_state(MSIDE, FIELD_COLUMN):
             if key != b'\r':
+                field = self.caption_fields[state(MINDEX)]
                 if key != b'\x08':
-                    self.caption_fields[state(MINDEX)].type(key)
+                    field.type(key)
                 else:
-                    self.caption_fields[state(MINDEX)].text = ""
+                    field.front_carat()
+                    field.delete(len(field.text))
             self.on_space()
 
 
@@ -1143,8 +1173,8 @@ FUNCTIONS = {
     QT: quit_menu.show,
     FQT: lambda: quit(0),
     OUTPT: input,
-    TRIGG : lambda: input("".join(['(' + i + ')' for i in TRIGGER_COMMANDS if is_trigger(i)])),
-    ATRIG : lambda: input("".join(['(' + i + ')' for i in TRIGGER_COMMANDS if not is_trigger(i)])),
+    TRIGG: lambda: input("".join(['(' + i + ')' for i in TRIGGER_COMMANDS if is_trigger(i)])),
+    ATRIG: lambda: input("".join(['(' + i + ')' for i in TRIGGER_COMMANDS if not is_trigger(i)])),
     ADA: assignment_editor.show,  # goes to assignment editor
 }
 
@@ -1236,10 +1266,17 @@ def get_field(field: InputField):
                 if len(field.text) > 0:
                     field.delete(1)
                 continue
-            elif len(ch) > 0 and ch[0] == b'\xe0':
-                if ch in (UP, RIGHT, DOWN, LEFT):
-                    continue  # TODO: Indexing through field, moving carat
-                ch = ch[1]
+            else:
+                #  only a special character would be a bytes object
+                #  with a length greater than 1
+                if len(ch) > 0 and ch[:1] == b'\xe0':
+                    if ch in (UP, DOWN):
+                        continue  # TODO: Indexing through field, moving carat
+                    elif ch == RIGHT:
+                        field.shift_carat(1)
+                    elif ch == LEFT:
+                        field.shift_carat(-1)
+                    continue
             char = ch.decode('ascii')
             field.type(char)
             print(ch)
