@@ -1,9 +1,103 @@
 from typing import Union, Callable
 
-from msvcrt import getwch as inputkey, getch
+from getch import getch as _getch
+
+def getch():
+    ch = _getch();
+    
+    return ord(ch).to_bytes(1, 'little') 
 
 import time
 from datetime import datetime
+
+#  datetime parsing
+
+# ANY DELIMITER CAN BE USED TO SEPARATE DATE TIME SYMBOLS AS LONG AS THE SYMBOL IS ONE CHARACTER, NON-ALPHANUMERIC, AND IS USED CONSISTENTLY
+# LET (D) REPRESENT THIS DELIMITER
+# LET (T) REPRESENT THE ALTERNATIVE DELIMITER FOR TIME (FOR A DATETIME INPUT)
+# X REPRESENTS ANY DIGIT (1-9)
+# SYMBOLS PROCEEDING X MAY BE ARRANGED IN ANY ORDER
+# WHEN SYMBOLS ARE ABSENT THE ORDER OF INPUT MUST BE PRESERVED IN THE ORDER SPECIFIED BY THE SYMBOLS
+# WHEN SYMBOLS ARE ABSENT INPUT SEGMENTS [PAIRS OF DIGITS] MUST BE ENTERED AS PAIRS, WITH NUMBERS LESS THAN 10 INCLUDING A LEADING 0
+
+def now(**replacements) -> datetime: 
+    return datetime.now().replace(**replacements)
+
+
+#  Options:
+
+MONTH_MAX = 12
+def _parse_date(string: str):
+    delimiter = ''
+    for ch in string:
+        if not ch.isalnum():
+            delimiter = ch
+            break
+    if delimiter:
+        tokens = string.split(delimiter)
+    else: # no delimiter => tokens are packed together => divisible by either 2 or 3
+        tokens = []
+        i, token_size = 0, 2 if len(string) % 2 == 0 else 3
+        while i < len(string):
+            tokens.append(string[i:i + token_size])
+            i += token_size
+
+    start = tokens[0] # the start must be consistent for the rest of the tokens
+    if len(start) == 2: # inferred date path
+        if len(tokens) == 2: # month-day path
+            month, day = int(tokens[0]), int(tokens[1])
+            return now(month=month, day=day)
+        elif len(tokens) == 3: # year-month-day path
+            year, month, day = map(lambda t: int(t), tokens)
+            return now(year=2000 + year, month=month, day=day)
+    elif len(start) == 3: # noninferred date path; symbols are specified
+        datetkns = {'D':now().day, 'Y':now().year - 2000, 'M':now().month} # day, year, month
+        for tk in tokens:
+            if tokens[-1] in datetkns:
+                tk = tokens[-1]
+                datetkns[tk] = int(tokens[:2])
+        return now(year=2000 + datetkns['Y'], month=datetkns['M'], day=datetkns['D'])
+def parse_date(string: str):
+    print(_parse_date(string))
+
+# DATES
+# CONTEXT OF ANNOTATIONS: WHEN USED AS A START/DUE DATE
+#  XXXXXX OR XX(D)XX(D)XX OR XXMXXDXXY (given day of the given month of the given year)
+parse_date("120423")
+parse_date("04-12-12")
+parse_date("11M24D23Y")
+parse_date("03D21Y10M")
+#  XXY(D)XXM (end of the given month of the current year)
+parse_date("23Y04M")
+parse_date("0205Y")
+#  XXY(D)XXD (day of the same month in the current year)
+parse_date("12D23Y")
+parse_date("42Y04D")
+#  XXXX OR XXD(D)XXM OR XX(D)XX OR XXDXXM (given day in the given month in the current year)
+parse_date("3008")
+parse_date("13D/06M")
+parse_date("12M/25D")
+parse_date("04M12D")
+#  XXY (same day and month of the given year)
+parse_date("23Y")
+#  XXM (end of the current month of the current year)
+parse_date("12M")
+#  XXD (day of the current month of the current year)
+parse_date("24D")
+input()
+
+# TIMES
+#  XX(T)XX OR XXHXXM OR XXH(T)XXM (hour)
+#  XX OR XXM (minute of the current hour)
+#  XXH (last minute of the given hour) 
+
+# DATETIMES
+# [valid date](D)[valid time](T) (self explanatory)
+# [valid date](D) (11:59PM of the given date)
+# [valid time](T) (given time of the current day)
+
+# TIMEDELTA
+#  XX(T)XX(T)XX(T) OR XXDXXHXXM (in s)
 
 from math import ceil
 
@@ -13,14 +107,17 @@ from structs import (BaseAssignment, Group,
                      groups, active_groups, inactive_groups)
 
 
-def clear(): return os.system('cls')
+def clear(): return os.system('clear')
 
 
-UP = b'\xe0H'
-RIGHT = b'\xe0M'
-DOWN = b'\xe0P'
-LEFT = b'\xe0K'
+SPECIAL = b'\x1b'
+UP = SPECIAL + b'[A'
+RIGHT = SPECIAL + b'[C'
+DOWN = SPECIAL + b'[B'
+LEFT = SPECIAL + b'[D'
 SPACEBAR = b' '
+ENTER = b'\n'
+BACKSPACE = b'\x7f'
 ANY_KEY = b''
 
 
@@ -305,8 +402,6 @@ class InputField(Box):
         if offset != 0:
             offset -= 1
 
-        print("OFFSET: ", offset)
-        print("TEXX: ", lentex)
         for x in range(self.w - xi):
             if x < lentex and x + offset < len(self.text):
                 self.grid[yi][xi + x] = self.text[x + offset]
@@ -747,27 +842,22 @@ class AssignmentEditor(Menu):
         if is_state(MSIDE, 2):
             get_field(self.caption_fields[state(MINDEX)])
             self.find_index(1)
-        elif is_state(MSIDE, 1):
+        else: self.on_enter()
+    
+    def on_enter(self):
+        if is_state(MSIDE, 1):
             if self.enabled[state(MINDEX)] is not None:
                 self.enabled[state(MINDEX)] = not self.enabled[state(MINDEX)]
 
     def find_index(self, delta: int):
         d = delta // abs(delta)
         i = state(MINDEX)
-        if is_state(MSIDE, BUTTON_COLUMN):
+        if not is_state(MSIDE, MSIDE_UNDECIDED):
+            check = False if is_state(MSIDE, FIELD_COLUMN) else None
             while True:
                 i += d
-                if 0 <= i < len(self.enabled):
-                    if self.enabled[i] is not None:
-                        state(MINDEX, i)
-                        return
-                else:
-                    return
-        elif is_state(MSIDE, FIELD_COLUMN):
-            while True:
-                i += d
-                if 0 <= i < len(self.enabled):
-                    if self.enabled[i] is not False:
+                if 0 <= i <= len(self.enabled):
+                    if i == len(self.enabled) or self.enabled[i] is not check:
                         state(MINDEX, i)
                         return
                 else:
@@ -775,181 +865,26 @@ class AssignmentEditor(Menu):
 
     def switch_sides(self, side: int):
         state(MSIDE, side)
-        if is_state(MSIDE, BUTTON_COLUMN):
-            if self.enabled[state(MINDEX)] is None:
+        if not is_state(MSIDE, MSIDE_UNDECIDED):
+            check = None if is_state(MSIDE, BUTTON_COLUMN) else False
+            if self.enabled[state(MINDEX)] is check:
                 i = state(MINDEX)  # we default to the top button
                 for n in range(1, len(self.enabled)):
                     if 0 <= i + n < len(self.enabled):
-                        if self.enabled[i + n] is not None:
+                        if self.enabled[i + n] is not check:
                             state(MINDEX, i + n)
                             return
 
                     if 0 <= i - n < len(self.enabled):
-                        if self.enabled[i - n] is not None:
-                            state(MINDEX, i - n)
-                            return
-
-        if is_state(MSIDE, FIELD_COLUMN):
-            if self.enabled[state(MINDEX)] is False:
-                i = state(MINDEX)  # we default to the top button
-                for n in range(1, len(self.enabled)):
-                    if 0 <= i + n < len(self.enabled):
-                        if self.enabled[i + n] is not False:
-                            state(MINDEX, i + n)
-                            return
-
-                    if 0 <= i - n < len(self.enabled):
-                        if self.enabled[i - n] is not False:
+                        if self.enabled[i - n] is not check:
                             state(MINDEX, i - n)
                             return
 
     def on_any_key(self, key):
         if is_state(MSIDE, FIELD_COLUMN):
-            if key != b'\r':
-                if key != b'\x08':
-                    self.caption_fields[state(MINDEX)].type(key)
-                else:
-                    self.caption_fields[state(MINDEX)].text = ""
-            self.on_space()
-
-
-    def get_map(self):
-        return InputMap({
-            ANY_KEY: self.on_any_key,
-            UP: lambda: self.find_index(-1),  # state(MINDEX, clamp(state(MINDEX) - 1, 0, len(captions) - 1)),
-            DOWN: lambda: self.find_index(1),  # state(MINDEX, clamp(state(MINDEX) + 1, 0, len(captions) - 1)),
-            RIGHT: lambda: self.switch_sides(FIELD_COLUMN),
-            LEFT: lambda: self.switch_sides(BUTTON_COLUMN),
-            b'\r': self.on_space
-        }, {})
-    def __init__(self):
-        super().__init__()
-        self.fields: list[InputField] = [
-            # Name, Description, Start Date, Due Date, Due Date Postincrement
-        ]
-        self.actives: list[bool] = []
-        self.enabled = [None, True, True, True, False]
-
-        self.captions = {
-            "Name": 30,
-            "Description": 90,
-            "Due Date": 20,  # YY-MM-DD hh:mm:ss (DateTime)
-            "Start Date": 20,
-            "Date Increment": 20,  # MM-WW-DD-hh-mm-ss (TimeSpan)
-        }
-        self.caption_fields: list[InputField] = []
-
-        for i, caption in enumerate(self.captions):
-            field = InputField(self.captions[caption], 1, [1, 2])
-            self.caption_fields.append(field)
-
-    def menu_display(self):
-        screen_share = 2 / 3
-        box_length = 3
-        margin_x = 2
-
-        bx = Box(133, 20)
-        bx.place_hbar(0, 19)
-        bx.place_vbar(0, 132)
-
-        BUTTON_COLUMN, FIELD_COLUMN = 1, 2
-
-        BOX_HEIGHT = 3
-        OBJECT_SPACEOUT = 1 + margin_x + box_length * 2 + 1
-        for i, caption in enumerate(self.captions):
-            if self.enabled[i] is not None:
-                active = bx.place_box(box_length, 1, ((i + 1) * BOX_HEIGHT - 1, 1 + margin_x))
-                if self.enabled[i]:
-                    active.place_center_text('X')
-                if is_state(MSIDE, BUTTON_COLUMN) and is_state(MINDEX, i):
-                    active.set_border('*')
-            elif is_state(MSIDE, BUTTON_COLUMN) and is_state(MINDEX, i):
-                state(MINDEX, state(MINDEX) + 1)  # +=1 until reach one that has a trigger
-
-            name = caption + ": "
-            bx.place_text(name, ((i + 1) * BOX_HEIGHT, 1 + OBJECT_SPACEOUT))
-
-            field = self.caption_fields[i]
-            bx.place(field,
-                     ((i + 1) * BOX_HEIGHT - 1, 2 + OBJECT_SPACEOUT + len(caption) + 1))  # name
-
-            field.set_border_default()
-            if is_state(MSIDE, FIELD_COLUMN):
-                if i == state(MINDEX):
-                    if self.enabled[i] or self.enabled[i] is None:
-                        field.set_border('*')
-                    else:
-                        state(MINDEX, state(MINDEX) - 1)
-        return bx
-
-
-BUTTON_COLUMN, FIELD_COLUMN = 1, 2
-class AssignmentEditor(Menu):
-    def on_space(self):
-        if is_state(MSIDE, 2):
-            get_field(self.caption_fields[state(MINDEX)])
-            self.find_index(1)
-        elif is_state(MSIDE, 1):
-            if self.enabled[state(MINDEX)] is not None:
-                self.enabled[state(MINDEX)] = not self.enabled[state(MINDEX)]
-
-    def find_index(self, delta: int):
-        d = delta // abs(delta)
-        i = state(MINDEX)
-        if is_state(MSIDE, BUTTON_COLUMN):
-            while True:
-                i += d
-                if 0 <= i < len(self.enabled):
-                    if self.enabled[i] is not None:
-                        state(MINDEX, i)
-                        return
-                else:
-                    return
-        elif is_state(MSIDE, FIELD_COLUMN):
-            while True:
-                i += d
-                if 0 <= i < len(self.enabled):
-                    if self.enabled[i] is not False:
-                        state(MINDEX, i)
-                        return
-                else:
-                    return
-
-    def switch_sides(self, side: int):
-        state(MSIDE, side)
-        if is_state(MSIDE, BUTTON_COLUMN):
-            if self.enabled[state(MINDEX)] is None:
-                i = state(MINDEX)  # we default to the top button
-                for n in range(1, len(self.enabled)):
-                    if 0 <= i + n < len(self.enabled):
-                        if self.enabled[i + n] is not None:
-                            state(MINDEX, i + n)
-                            return
-
-                    if 0 <= i - n < len(self.enabled):
-                        if self.enabled[i - n] is not None:
-                            state(MINDEX, i - n)
-                            return
-
-        if is_state(MSIDE, FIELD_COLUMN):
-            if self.enabled[state(MINDEX)] is False:
-                i = state(MINDEX)  # we default to the top button
-                for n in range(1, len(self.enabled)):
-                    if 0 <= i + n < len(self.enabled):
-                        if self.enabled[i + n] is not False:
-                            state(MINDEX, i + n)
-                            return
-
-                    if 0 <= i - n < len(self.enabled):
-                        if self.enabled[i - n] is not False:
-                            state(MINDEX, i - n)
-                            return
-
-    def on_any_key(self, key):
-        if is_state(MSIDE, FIELD_COLUMN):
-            if key != b'\r':
+            if key != ENTER:
                 field = self.caption_fields[state(MINDEX)]
-                if key != b'\x08':
+                if key != BACKSPACE:
                     field.type(key)
                 else:
                     field.front_carat()
@@ -958,13 +893,19 @@ class AssignmentEditor(Menu):
 
 
     def get_map(self):
+        def default_to_field_column():
+            if is_state(MSIDE, MSIDE_UNDECIDED):
+                state(MSIDE, FIELD_COLUMN)
+                return False
+            return True
         return InputMap({
             ANY_KEY: self.on_any_key,
-            UP: lambda: self.find_index(-1),  # state(MINDEX, clamp(state(MINDEX) - 1, 0, len(captions) - 1)),
-            DOWN: lambda: self.find_index(1),  # state(MINDEX, clamp(state(MINDEX) + 1, 0, len(captions) - 1)),
+            UP: lambda: default_to_field_column() and self.find_index(-1),  # state(MINDEX, clamp(state(MINDEX) - 1, 0, len(captions) - 1)),
+            DOWN: lambda: default_to_field_column() and self.find_index(1),  # state(MINDEX, clamp(state(MINDEX) + 1, 0, len(captions) - 1)),
             RIGHT: lambda: self.switch_sides(FIELD_COLUMN),
             LEFT: lambda: self.switch_sides(BUTTON_COLUMN),
-            b'\r': self.on_space
+            ENTER: self.on_enter,
+            SPACEBAR: self.on_space
         }, {})
     def __init__(self):
         super().__init__()
@@ -991,8 +932,9 @@ class AssignmentEditor(Menu):
         screen_share = 2 / 3
         box_length = 3
         margin_x = 2
-
-        bx = Box(133, 20)
+        
+        w, h = state(WIDTH), state(LNGTH)
+        bx = Box(w, h)
         bx.place_hbar(0, 19)
         bx.place_vbar(0, 132)
 
@@ -1024,6 +966,14 @@ class AssignmentEditor(Menu):
                         field.set_border('*')
                     else:
                         state(MINDEX, state(MINDEX) - 1)
+        # Enter Button
+        enter_w = w // 3
+        enter_h = 1
+        enter_center_y = 1  # from the bottom of the screen
+        enter = bx.place_box(enter_w, 1, (h - 1 + enter_h - 2 - enter_center_y, enter_w)) # + 2 for borders
+        enter.place_center_text("Create New Assignment");
+        if is_state(MINDEX, len(self.captions)): # goes over
+            enter.set_border('*')
         return bx
 
 
@@ -1066,9 +1016,9 @@ def get_input(init: str = "", **specials) -> Union[bytes, str, None]:
     print('-:> ', end="")
     key = getch() if not init else init[0].encode('ascii')
 
-    if key == b'\xe0':  # precedes special character; use getch() again
+    if key == SPECIAL:  # precedes special character; use getch() again
         # todo: check for esc
-        spcl = getch()
+        spcl = getch() + getch()
         print('\r', end="")
         return key + spcl
     elif key == b':' and not block_cmds:
@@ -1085,7 +1035,7 @@ def get_input(init: str = "", **specials) -> Union[bytes, str, None]:
             print(prompt + " ".join(cmds), end="")
 
             ch = getch()
-            if ch == b'\xe0':  # precedes special character; use getch() again
+            if ch == SPECIAL:  # precedes special character; use getch() again
                 # todo: check for esc
                 pass
             elif ch == b';':
@@ -1093,12 +1043,12 @@ def get_input(init: str = "", **specials) -> Union[bytes, str, None]:
                 clearline()
                 print("\r", end="")
                 return get_input()
-            elif ch == b'\x08':  # backspace
+            elif ch == BACKSPACE:  # backspace
                 if cmds:
                     cmds[-1] = cmds[-1][:len(cmds[-1]) - 1]
                     if len(cmds) > 1 and not cmds[-1]:
                         cmds = cmds[:len(cmds) - 1]
-            elif ch == b'\r':  # user presses enter
+            elif ch == ENTER:  # user presses enter
                 clearline()
                 break
             elif ch == b' ':
@@ -1222,7 +1172,7 @@ How can we write this algorithm, then?
 1. We need to have a function that is called upon selecting an input field.
 2. We need to capture our current menu.
 3. We need to have a while loop that iterates every time getch() is called successfully.
-4. The while loop must terminate when getch() == b'\r' (carriage return).
+4. The while loop must terminate when getch() == b'\n' (carriage return).
 
 Say we have the following box bx.
 bx = Box(133, 20)
@@ -1241,7 +1191,7 @@ while True:
     ch = getch()
     if ch == b'\xe0': # special char
         spec = getch()
-    elif ch == b'\r':
+    elif ch == b'\n':
         break
     else:
         field.type(ch)
@@ -1259,17 +1209,17 @@ def get_field(field: InputField):
         print(menu.bake())
         ch = get_input()
         if isinstance(ch, bytes):
-            if ch == b'\r':
+            if ch == ENTER:
                 InputField.FIELD = None
                 return
-            elif ch == b'\x08':
+            elif ch == BACKSPACE:
                 if len(field.text) > 0:
                     field.delete(1)
                 continue
             else:
                 #  only a special character would be a bytes object
                 #  with a length greater than 1
-                if len(ch) > 0 and ch[:1] == b'\xe0':
+                if len(ch) > 0 and ch[:1] == SPECIAL:
                     if ch in (UP, DOWN):
                         continue  # TODO: Indexing through field, moving carat
                     elif ch == RIGHT:
