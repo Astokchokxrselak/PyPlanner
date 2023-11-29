@@ -1,14 +1,17 @@
+# Design Philosophy
+
+# Every menu should be able to work independently of each other.
+
+# Menus will base their functionalities off of the current context
+# of the entire program.
+
 from typing import Union, Callable
 
-from getch import getch as _getch
-
-def getch():
-    ch = _getch();
-    
-    return ord(ch).to_bytes(1, 'little') 
+from msvcrt import getch
 
 import time
 from datetime import datetime
+
 
 #  datetime parsing
 
@@ -29,7 +32,7 @@ def now(**replacements) -> datetime:
 #  Options:
 
 MONTH_MAX = 12
-def _parse_date(string: str):
+def parse_date(string: str) -> datetime:
     delimiter = ''
     for ch in string:
         if not ch.isalnum():
@@ -56,7 +59,8 @@ def _parse_date(string: str):
             month, day = int(tokens[0]), int(tokens[1])
             return now(month=month, day=day)
         elif len(tokens) == 3: # year-month-day path
-            year, month, day = map(lambda t: int(t), tokens)
+            month, day, year = map(lambda t: int(t), tokens)
+            print(month)
             return now(year=2000 + year, month=month, day=day)
     elif len(start) == 3: # noninferred date path; symbols are specified
         datetkns = {'D':now().day, 'Y':now().year - 2000, 'M':now().month} # day, year, month
@@ -65,8 +69,7 @@ def _parse_date(string: str):
                 tk = token[-1]
                 datetkns[tk] = int(token[:2])
         return now(year=2000 + datetkns['Y'], month=datetkns['M'], day=datetkns['D'])
-def parse_date(string: str):
-    print(_parse_date(string))
+
 # DATES
 # CONTEXT OF ANNOTATIONS: WHEN USED AS A START/DUE DATE
 #  XXXXXX OR XX(D)XX(D)XX OR XXMXXDXXY (given day of the given month of the given year)
@@ -76,7 +79,7 @@ parse_date("11M24D23Y")
 parse_date("03D21Y10M")
 #  XXY(D)XXM (end of the given month of the current year)
 parse_date("23Y04M")
-parse_date("02M05Y")
+parse_date("03M06Y")
 #  XXY(D)XXD (day of the same month in the current year)
 parse_date("12D23Y")
 parse_date("42Y04D")
@@ -94,8 +97,17 @@ parse_date("24D")
 input()
 
 
-def _parse_time(string: str):
+def parse_time(string: str) -> datetime:
+    print(string[len(string) - 2:])
+    ending_chars = string[len(string) - 2:]
+    is_pm = True  # trigger(PMDEF)
+    if ending_chars.isalpha():
+        is_pm = ending_chars.upper() == 'PM'
+        string = string[:len(string) - 2]
+
+
     delimiter = ''
+    hour, minute = now().hour, now().minute
     for ch in string:
         if not ch.isalnum():
             delimiter = ch
@@ -119,19 +131,19 @@ def _parse_time(string: str):
     if len(start) == 2: # inferred time path
         if len(tokens) == 1:
             hour = int(tokens[0])
-            return now(hour=hour, minute=59, second=0)
         if len(tokens) == 2: # hour-minute path
             hour, minute = int(tokens[0]), int(tokens[1])
-            return now(hour=hour, minute=minute)
     elif len(start) == 3: # noninferred time path; symbols are specified
-        datetkns = {'H':now().hour, 'M':59} # hour, minute
+        timetkns = {'H':now().hour, 'M':59} # hour, minute
         for token in tokens:
-            if token[-1] in datetkns:
+            if token[-1] in timetkns:
                 tk = token[-1]
-                datetkns[tk] = int(token[:2])
-        return now(hour=datetkns['H'], minute=datetkns['M'], second=0, microsecond=0)
-def parse_time(string: str):
-    print(_parse_time(string))
+                timetkns[tk] = int(token[:2])
+        hour, minute = timetkns['H'], timetkns['M']
+    if is_pm:
+        if hour < 12:  # PM hours
+            hour += 12
+    return now(hour=hour, minute=59)
 
 # TIMES
 #  XX(T)XX OR XXHXXM (hour)
@@ -150,6 +162,86 @@ input()
 # [valid date](D) (11:59PM of the given date)
 # [valid time](T) (given time of the current day)
 
+def parse_datetime(string):
+    leading_char = string[0] # the leading character will either be a character
+    # or a digit.
+    if leading_char.isalpha():
+        if leading_char == 'T':
+            return parse_time(string[1:])
+        if leading_char == 'D':
+            next_char = string[1]
+            if next_char == 'T':
+                return parse_datetime(string[2:])
+            return parse_date(string[1:])
+
+    delis = set()
+    delimiters = []
+    for ch in string:
+        if not ch.isalnum() and ch not in delis:
+            delimiters.append(ch)
+            delis.add(ch)
+    del delis
+
+    if len(delimiters) == 3:
+        tokens = string.split(delimiters[1])
+        time = parse_time(tokens[1])
+        date = parse_date(tokens[0])
+        datetime = date.replace(hour=time.hour, minute=time.minute)
+        return datetime
+    if len(delimiters) == 1: # inferred datetime path
+        tokens = string.split(delimiters[0])
+        # inferred datetime path has exactly 5 tokens; MM(D)DD(D)YY(D)HH(D)MM
+        month, day, year, hour, minute = map(lambda t: int(t), tokens)
+        datetime = now(month=month, day=day, year=year, hour=hour, minute=minute)
+        return datetime
+    if len(delimiters) == 0:  # labeled path
+        tokens = []
+        i = 0
+        if len(string) % 3 == 0:
+            if string[2].isalpha():
+                token_size = 3
+            else:
+                token_size = 2
+        elif len(string) % 2 == 0:
+            token_size = 2
+        else:
+            raise ValueError("Parameter is in an invalid format.")
+        while i < len(string):
+            tokens.append(string[i:i + token_size])
+            i += token_size
+
+        tkns = {'D': now().day, 'Y': now().year - 2000, 'M': now().month, 'h': now().hour, 'm': 59}  # hour, minute
+        if token_size == 3:
+            month_assigned = False
+            for token in tokens:
+                if token[-1] in tkns:
+                    tk = token[-1]
+                    if tk == 'M':
+                        if not month_assigned:
+                            tkns['M'] = int(token[:2])
+                        else:
+                            tkns['m'] = int(token[:2])  # change to minute
+                        month_assigned = not month_assigned  # alternate
+        else:
+            # 1130 - 11:30PM today
+            # 113023 - 11:59PM 11/30/23
+            # 1130231130 - 11:30PM 11/30/23
+            # 11302311 - 11:59PM 11/30/23
+            if len(tokens) == 2:
+                return parse_time(string)
+            elif len(tokens) == 3:
+                return parse_time(string).replace(hour=11, minute=59)
+
+        return now(day=tkns['D'], year=tkns['Y'] + 2000, month=tkns['M'], hour=tkns['h'], minute=tkns['m'])
+
+
+print(parse_datetime("11M28D23Y10H00M"))
+print(parse_datetime("11-28-23/10:00"))
+print(parse_datetime("11-28-23-10-00"))
+print(parse_datetime("T1159"))
+print(parse_datetime("D1230"))
+
+input()
 # TIMEDELTA
 #  XX(T)XX(T)XX(T) OR XXDXXHXXM (in s)
 
@@ -161,17 +253,19 @@ from structs import (BaseAssignment, Group,
                      groups, active_groups, inactive_groups)
 
 
-def clear(): return os.system('clear')
+def clear(): return os.system('cls')
 
 
-SPECIAL = b'\x1b'
-UP = SPECIAL + b'[A'
-RIGHT = SPECIAL + b'[C'
-DOWN = SPECIAL + b'[B'
-LEFT = SPECIAL + b'[D'
+SPECIAL = b'\xe0'
+UP = b'\xe0H'
+RIGHT = b'\xe0M'
+DOWN = b'\xe0P'
+LEFT = b'\xe0K'
 SPACEBAR = b' '
-ENTER = b'\n'
-BACKSPACE = b'\x7f'
+ENTER = b'\r'
+COPY = b'\x03'
+PASTE = b'\x16'
+BACKSPACE = b'\x08'
 ANY_KEY = b''
 
 
@@ -424,7 +518,7 @@ class InputField(Box):
     def __init__(self, w: int, h: int, carat_pos: list[int, int] = (1, 1), **kwargs):
         super().__init__(w, h, **kwargs)
         self.carat_origin = list(carat_pos)
-        self.carat = 0 # the beginning of the string
+        self.carat = 0  # the beginning of the string
 
         self.text = ""
 
@@ -435,7 +529,9 @@ class InputField(Box):
     def delete(self, del_count: int):
         self.text = self.text[:max(0, self.carat - del_count)] + self.text[self.carat:]
         self.shift_carat(-del_count)
-
+    def clear(self):
+        self.back_carat()
+        self.text = ""
     def front_carat(self):
         self.shift_carat(len(self.text))
 
@@ -444,6 +540,25 @@ class InputField(Box):
 
     def shift_carat(self, shift_amount: int):
         self.carat = clamp(self.carat + shift_amount, 0, len(self.text))
+
+    def validate(self, vtype: [str, type]):
+        # 's' - string
+        # 'd' - date
+        # 't' - time
+        # 'dt' - datetime
+
+        # if vtype == 's' or vtype is str:
+        #    return True
+        try:
+            if vtype == 'd':
+                return parse_date(self.text)
+            elif vtype == 't':
+                return parse_time(self.text)
+            elif vtype == 'dt':
+                return parse_datetime(self.text)
+        except ValueError:
+            self.clear()
+        return self.text
 
     def bake(self):
         # if the carat is greater than the length of the box, we need to offset the view
@@ -890,16 +1005,29 @@ class QuitMenu(Menu):
         return box
 
 
+def has_focused_group() -> bool:
+    if state(FGRP) == NO_FOCUSED_GROUP:
+        return False
+    return True
+
+def get_focused_group() -> Group:
+    return groups[state(FGRPS)][state(FGRP)]
+
+
 BUTTON_COLUMN, FIELD_COLUMN = 1, 2
 class AssignmentEditor(Menu):
     def on_space(self):
-        if is_state(MSIDE, 2):
-            get_field(self.caption_fields[state(MINDEX)])
-            self.find_index(1)
-        else: self.on_enter()
+        if is_state(MSIDE, FIELD_COLUMN) and state(MINDEX) < len(self.caption_fields):
+            midx = state(MINDEX)
+            field = self.caption_fields[midx]
+            get_field(field)
+            if field.validate(self.field_types[midx]):
+                self.find_index(1)
+        else:
+            self.on_enter()
     
     def on_enter(self):
-        if is_state(MSIDE, 1):
+        if is_state(MSIDE, BUTTON_COLUMN):
             if self.enabled[state(MINDEX)] is not None:
                 self.enabled[state(MINDEX)] = not self.enabled[state(MINDEX)]
 
@@ -913,11 +1041,13 @@ class AssignmentEditor(Menu):
                 if 0 <= i <= len(self.enabled):
                     if i == len(self.enabled) or self.enabled[i] is not check:
                         state(MINDEX, i)
-                        return
+                        break
                 else:
-                    return
+                    break
 
     def switch_sides(self, side: int):
+        if 0 > state(MINDEX) or state(MINDEX) >= len(self.captions):
+            return
         state(MSIDE, side)
         if not is_state(MSIDE, MSIDE_UNDECIDED):
             check = None if is_state(MSIDE, BUTTON_COLUMN) else False
@@ -935,16 +1065,24 @@ class AssignmentEditor(Menu):
                             return
 
     def on_any_key(self, key):
-        if is_state(MSIDE, FIELD_COLUMN):
+        if is_state(MSIDE, FIELD_COLUMN) and state(MINDEX) < len(self.caption_fields):
             if key != ENTER:
                 field = self.caption_fields[state(MINDEX)]
+                field.front_carat()
                 if key != BACKSPACE:
                     field.type(key)
                 else:
-                    field.front_carat()
                     field.delete(len(field.text))
             self.on_space()
 
+    def on_ctrl_c(self):
+        if is_state(MSIDE, FIELD_COLUMN) and state(MINDEX) < len(self.caption_fields):
+            global clipboard
+            clipboard = self.caption_fields[state(MINDEX)].text
+
+    def on_ctrl_v(self):
+        if is_state(MSIDE, FIELD_COLUMN) and state(MINDEX) < len(self.caption_fields):
+            self.caption_fields[state(MINDEX)].type(clipboard)
 
     def get_map(self):
         def default_to_field_column():
@@ -958,6 +1096,8 @@ class AssignmentEditor(Menu):
             DOWN: lambda: default_to_field_column() and self.find_index(1),  # state(MINDEX, clamp(state(MINDEX) + 1, 0, len(captions) - 1)),
             RIGHT: lambda: self.switch_sides(FIELD_COLUMN),
             LEFT: lambda: self.switch_sides(BUTTON_COLUMN),
+            COPY: self.on_ctrl_c,
+            PASTE: self.on_ctrl_v,
             ENTER: self.on_enter,
             SPACEBAR: self.on_space
         }, {})
@@ -976,6 +1116,7 @@ class AssignmentEditor(Menu):
             "Start Date": 20,
             "Date Increment": 20,  # MM-WW-DD-hh-mm-ss (TimeSpan)
         }
+        self.field_types = ['s', 's', 'dt', 'dt', 'ts']
         self.caption_fields: list[InputField] = []
 
         for i, caption in enumerate(self.captions):
@@ -992,7 +1133,9 @@ class AssignmentEditor(Menu):
         bx.place_hbar(0, 19)
         bx.place_vbar(0, 132)
 
-        BUTTON_COLUMN, FIELD_COLUMN = 1, 2
+        if has_focused_group():
+            focused = get_focused_group()
+            bx.place_text(focused.name, (bx.h - 1, bx.w - len(focused.name) - 2))
 
         BOX_HEIGHT = 3
         OBJECT_SPACEOUT = 1 + margin_x + box_length * 2 + 1
@@ -1058,7 +1201,7 @@ def run(output: bool, *cmdss: list[str]):
             FUNCTIONS[cmd](*prms)
             return None
         if output:
-            return cmds[0]
+            return cmds
 
 
 def get_input(init: str = "", **specials) -> Union[bytes, str, None]:
@@ -1072,7 +1215,7 @@ def get_input(init: str = "", **specials) -> Union[bytes, str, None]:
 
     if key == SPECIAL:  # precedes special character; use getch() again
         # todo: check for esc
-        spcl = getch() + getch()
+        spcl = getch()
         print('\r', end="")
         return key + spcl
     elif key == b':' and not block_cmds:
@@ -1116,15 +1259,17 @@ def get_input(init: str = "", **specials) -> Union[bytes, str, None]:
         print('\r', end="")
         return key  # key.decode('ascii').lower()
 
-
-REFRS = 'refrs'
-POP = 'pop'
-DEBUG = 'debug'
+HDNV = 'hdnv'  # hide navigation menu
+REFRS = 'refrs'  # refresh the current menu
+POP = 'pop'  # pop the current menu (can be used to quit from the group menu)
+DEBUG = 'debug'  # enter debug mode (counts empty spaces and shows origins for each element)
+PMDEF = 'pmdef'  # whether pm is default or not
 TRIGGER_COMMANDS = {
     'hdnv': False,
     REFRS: False,
     POP: False,
-    DEBUG: False
+    DEBUG: False,
+    PMDEF: True
 }
 
 
@@ -1179,7 +1324,7 @@ FUNCTIONS = {
     OUTPT: input,
     TRIGG: lambda: input("".join(['(' + i + ')' for i in TRIGGER_COMMANDS if is_trigger(i)])),
     ATRIG: lambda: input("".join(['(' + i + ')' for i in TRIGGER_COMMANDS if not is_trigger(i)])),
-    ADA: assignment_editor.show,  # goes to assignment editor
+    ADA: lambda: reset_menu_selection() or assignment_editor.show(),  # goes to assignment editor
 }
 
 
@@ -1204,7 +1349,9 @@ def ui():
                   '-' * len(header),
                   *COMMAND_HISTORY,
                   '-' * len(header), sep="\n")
-            if get_input(':') == "catch":
+
+            inp = get_input(':')
+            if inp[0] == "catch":
                 raise e
 
 
@@ -1255,35 +1402,54 @@ while True:
 
 # todo: callback on finish
 # assumption: field is a single line input field
+clipboard = ""
+
+
+# 's' - string
+# 'd' - date
+# 't' - time
+# 'dt' - datetime
 def get_field(field: InputField):
     InputField.FIELD = field
     menu = MENU.menu_display()
     while True:
         clear()
         print(menu.bake())
-        ch = get_input()
+        ch = get_input(block_cmds=True)
         if isinstance(ch, bytes):
             if ch == ENTER:
                 InputField.FIELD = None
-                return
+                break
             elif ch == BACKSPACE:
                 if len(field.text) > 0:
                     field.delete(1)
                 continue
-            else:
-                #  only a special character would be a bytes object
-                #  with a length greater than 1
-                if len(ch) > 0 and ch[:1] == SPECIAL:
-                    if ch in (UP, DOWN):
-                        continue  # TODO: Indexing through field, moving carat
-                    elif ch == RIGHT:
-                        field.shift_carat(1)
-                    elif ch == LEFT:
-                        field.shift_carat(-1)
-                    continue
+            elif ch == b'`':
+                cmd = get_input(':')
+                if cmd[0] == 'ccase':
+                    if len(cmd) == 1 or cmd[1] == 't':  # title case
+                        text = list(field.text)
+                        ttext = ""
+                        for i, ch in enumerate(text):
+                            if i == 0 or text[i].isalpha() and not text[i - 1].isalpha():
+                                ttext += text[i].upper()
+                            else:
+                                ttext += text[i]
+                        field.clear()
+                        field.type(ttext)
+                        continue
+            elif len(ch) > 0 and ch[0] == ord(SPECIAL):
+                if ch in (UP, DOWN):
+                    continue  # TODO: Indexing through field, moving carat
+                elif ch == RIGHT:
+                    field.shift_carat(1)
+                elif ch == LEFT:
+                    field.shift_carat(-1)
+                continue
             char = ch.decode('ascii')
             field.type(char)
             print(ch)
+    return field.text
 
 
 # Template for Menus that use InputFields.
