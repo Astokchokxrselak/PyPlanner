@@ -10,7 +10,7 @@ from typing import Union, Callable
 from msvcrt import getch
 
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 #  datetime parsing
@@ -44,7 +44,10 @@ def parse_date(string: str) -> datetime:
         tokens = []
         i = 0
         if len(string) % 3 == 0:
-            token_size = 3
+            if string[2].isalpha():
+                token_size = 3
+            else:
+                token_size = 2
         elif len(string) % 2 == 0:
             token_size = 2
         else:
@@ -52,6 +55,7 @@ def parse_date(string: str) -> datetime:
         while i < len(string):
             tokens.append(string[i:i + token_size])
             i += token_size
+        print("DATES: ", tokens)
 
     start = tokens[0] # the start must be consistent for the rest of the tokens
     if len(start) == 2: # inferred date path
@@ -67,7 +71,7 @@ def parse_date(string: str) -> datetime:
         for token in tokens:
             if token[-1] in datetkns:
                 tk = token[-1]
-                datetkns[tk] = int(token[:2])
+                datetkns[tk] = int(token[:len(token) - 1])
         return now(year=2000 + datetkns['Y'], month=datetkns['M'], day=datetkns['D'])
 
 # DATES
@@ -98,13 +102,11 @@ input()
 
 
 def parse_time(string: str) -> datetime:
-    print(string[len(string) - 2:])
     ending_chars = string[len(string) - 2:]
     is_pm = True  # trigger(PMDEF)
     if ending_chars.isalpha():
         is_pm = ending_chars.upper() == 'PM'
         string = string[:len(string) - 2]
-
 
     delimiter = ''
     hour, minute = now().hour, now().minute
@@ -118,7 +120,10 @@ def parse_time(string: str) -> datetime:
         tokens = []
         i = 0
         if len(string) % 3 == 0:
-            token_size = 3
+            if string[2].isalpha():
+                token_size = 3
+            else:
+                token_size = 2
         elif len(string) % 2 == 0:
             token_size = 2
         else:
@@ -126,24 +131,25 @@ def parse_time(string: str) -> datetime:
         while i < len(string):
             tokens.append(string[i:i + token_size])
             i += token_size
+        print("DATES: ", tokens)
 
-    start = tokens[0] # the start must be consistent for the rest of the tokens
-    if len(start) == 2: # inferred time path
+    if string.isnumeric() or delimiter:
         if len(tokens) == 1:
             hour = int(tokens[0])
+            minute = 59
         if len(tokens) == 2: # hour-minute path
             hour, minute = int(tokens[0]), int(tokens[1])
-    elif len(start) == 3: # noninferred time path; symbols are specified
+    else: # noninferred time path; symbols are specified
         timetkns = {'H':now().hour, 'M':59} # hour, minute
         for token in tokens:
             if token[-1] in timetkns:
                 tk = token[-1]
-                timetkns[tk] = int(token[:2])
+                timetkns[tk] = int(token[:len(token) - 1])
         hour, minute = timetkns['H'], timetkns['M']
     if is_pm:
         if hour < 12:  # PM hours
             hour += 12
-    return now(hour=hour, minute=59)
+    return now(hour=hour, minute=minute)
 
 # TIMES
 #  XX(T)XX OR XXHXXM (hour)
@@ -159,13 +165,55 @@ input()
 
 # DATETIMES
 # [valid date](D)[valid time](T) (self explanatory)
-# [valid date](D) (11:59PM of the given date)
-# [valid time](T) (given time of the current day)
+# D[valid date] (11:59PM of the given date)
+# T[valid time] (given time of the current day)
+# +[valid timespan] (the current datetime plus the timespan)
+# +[valid timespan]T[valid time] (the current datetime plus the timespan with time T)
+
+def get_datetime(alphstr: str, plus_count: int = 0) -> datetime:
+    current_time = now()
+    options = {
+        "Monday": current_time + timedelta(((-current_time.weekday() - 1) % 7 + 1 + plus_count * 7)),
+        "Tuesday": current_time + timedelta(((-current_time.weekday()) % 7 + 1 + plus_count * 7)),
+        "Wednesday": current_time + timedelta(((-current_time.weekday() + 1) % 7 + 1 + plus_count * 7)),
+        "Thursday": current_time + timedelta(((-current_time.weekday() + 2) % 7 + 1 + plus_count * 7)),
+        "Friday": current_time + timedelta(((-current_time.weekday() + 3) % 7 + 1 + plus_count * 7)),
+        "Saturday": current_time + timedelta(((-current_time.weekday() + 4) % 7 + 1 + plus_count * 7)),
+        "Sunday": current_time + timedelta(((-current_time.weekday() + 5) % 7 + 1 + plus_count * 7)),
+    }
+    return options[alphstr]
 
 def parse_datetime(string):
-    leading_char = string[0] # the leading character will either be a character
+    if not string:
+        raise ValueError("Parameter is in an invalid format.")
+    string = string.strip(' ')
+
+    # SPECIAL CASES #
+
+    if string == 'N':
+        return now()
+
+    # STRING/WEEKDAY #
+
+    i = 0
+    word = ""
+    while i < len(string) and string[i].isalpha():
+        word += string[i]
+        i += 1
+    try:
+        date = get_datetime(word, string.count('+') - string.count('-'))
+        if '@' in string:
+            time = parse_time(string[string.index('@') + 1:])
+            date = date.replace(hour=time.hour, minute=time.minute)
+        return date
+    except KeyError:
+        pass
+
+    # NORMAL CASES #
+
+    leading_char = string[0]  # the leading character will either be a character
     # or a digit.
-    if leading_char.isalpha():
+    if not leading_char.isnumeric():
         if leading_char == 'T':
             return parse_time(string[1:])
         if leading_char == 'D':
@@ -173,6 +221,20 @@ def parse_datetime(string):
             if next_char == 'T':
                 return parse_datetime(string[2:])
             return parse_date(string[1:])
+        if leading_char == '+':
+            spanstr = ""
+            for ch in string[1:]:
+                if ch.isalnum():
+                    spanstr += ch
+                else:
+                    break
+            print("ASPAN", spanstr)
+            date = now() + parse_timespan(spanstr)
+            if '@' in string:  # sets exact time
+                time = parse_time(string[string.index('@') + 1:])
+                date = date.replace(hour=time.hour, minute=time.minute)
+                print("CHANGED DATE: ", time)
+            return date
 
     delis = set()
     delimiters = []
@@ -196,54 +258,188 @@ def parse_datetime(string):
         return datetime
     if len(delimiters) == 0:  # labeled path
         tokens = []
-        i = 0
-        if len(string) % 3 == 0:
-            if string[2].isalpha():
-                token_size = 3
-            else:
-                token_size = 2
-        elif len(string) % 2 == 0:
-            token_size = 2
-        else:
-            raise ValueError("Parameter is in an invalid format.")
-        while i < len(string):
-            tokens.append(string[i:i + token_size])
-            i += token_size
+        # the inferred path MUST use two digits per token
 
-        tkns = {'D': now().day, 'Y': now().year - 2000, 'M': now().month, 'h': now().hour, 'm': 59}  # hour, minute
-        if token_size == 3:
+        iterstring = string
+        if string[len(string) - 2 - 1:].isalpha():
+            iterstring = string[len(string) - 2 - 1:]
+
+        alpha = False
+        for i in iterstring:
+            if i.isalpha():
+                alpha = True
+                break
+
+        if alpha:
+            token = ''
+            for ch in string:
+                token += ch
+                if ch.isalpha():
+                    tokens.append(token)
+                    token = ""
+
+            tkns = {'D': now().day, 'Y': now().year - 2000, 'M': now().month, 'h': now().hour, 'm': now().minute}  # hour, minute
             month_assigned = False
             for token in tokens:
                 if token[-1] in tkns:
                     tk = token[-1]
                     if tk == 'M':
                         if not month_assigned:
-                            tkns['M'] = int(token[:2])
+                            tkns['M'] = int(token[:len(token) - 1])
                         else:
-                            tkns['m'] = int(token[:2])  # change to minute
+                            tkns['m'] = int(token[:len(token) - 1])  # change to minute
                         month_assigned = not month_assigned  # alternate
+                    else:
+                        tkns[tk] = int(token[:len(token) - 1])
         else:
             # 1130 - 11:30PM today
             # 113023 - 11:59PM 11/30/23
             # 1130231130 - 11:30PM 11/30/23
             # 11302311 - 11:59PM 11/30/23
+            token, i = '', 0
+            while i < len(string):
+                token += string[i]
+                i += 1
+                if i % 2 == 0:
+                    tokens.append(token)
+                    token = ''
+
             if len(tokens) == 2:
                 return parse_time(string)
             elif len(tokens) == 3:
-                return parse_time(string).replace(hour=11, minute=59)
+                print(string[:6])
+                print(parse_date(string[:6]))
+                return parse_date(string[:6]).replace(hour=11, minute=59)
+            elif len(tokens) >= 4:
+                date = parse_date(string[:6]) # first three pairs of characters represent date
+                time = parse_time(string[6:]) # last two pairs of characters represent time
+                return date.replace(hour=time.hour, minute=time.minute)
+            else:
+                raise ValueError("Parameter is in an invalid format.")
 
         return now(day=tkns['D'], year=tkns['Y'] + 2000, month=tkns['M'], hour=tkns['h'], minute=tkns['m'])
 
-
-print(parse_datetime("11M28D23Y10H00M"))
-print(parse_datetime("11-28-23/10:00"))
+# print("1A0A: ", parse_datetime("11M28D23Y10H00M"))
+print("------------------")
+print(parse_datetime("Monday"))
+print(parse_datetime("Monday@1:02PM"))
+print("--------------")
+print("2B0B: ", parse_datetime("11-28-23/10:00"))
 print(parse_datetime("11-28-23-10-00"))
 print(parse_datetime("T1159"))
 print(parse_datetime("D1230"))
 
 input()
 # TIMEDELTA
-#  XX(T)XX(T)XX(T) OR XXDXXHXXM (in s)
+#  DDHHMM - day, hour, minute timespan (inferred path)
+# + - next day, same minute
+# +(T) for token T (Y, W, D, M, H, OR m) - next T (T's value + 1)
+# + - next day
+# +++ - in 3 days
+# any number of +'s can be used to separate digits, i.e.
+
+# 11++20 (in 11 days, 2 hours from this current hour, and 20 minutes)
+# limitation: +'s cannot be used for multiple tokens in a row, they must be separated
+
+# +++
+
+# -(T) for token T (Y, W, D, M, H OR m) - last T (T's value - 1)
+# XXYXXMXXWXXDXXHXXM (Year, month, week, day, hour, minute)
+# DT[valid datetime] - difference between current datetime and valid datetime.
+
+
+def parse_timespan(string: str) -> timedelta:
+    string = string.strip()
+    if not string:
+        raise ValueError("Parameter is in an invalid format.")
+    leading_chars = string[:2]
+    if leading_chars == 'DT':
+        # if string[2] != '[' or string[-1] != ']':
+        #     raise ValueError("Parameter is in an invalid format.")
+        datetime = parse_datetime(string[3:len(string)])
+        return datetime - now()
+    else:
+        leading_char = leading_chars[0]
+        if leading_char.isalpha(): # and leading_chars[1] == '[':
+            # if string[-1] != ']':
+            #    raise ValueError("Parameter is in an invalid format.")
+            if leading_char == 'D':
+                datetime = parse_date(string[2:len(string) - 1])
+                return datetime - now()
+            elif leading_char == 'T':
+                datetime = parse_time(string[2:len(string) - 1])
+                return datetime - now()
+    tokens = []
+
+    delimiter = ''
+    alpha = False
+    for i in string:
+        if i.isalpha():
+            alpha = True
+
+    if alpha:
+        token = ''
+        for ch in string:
+            token += ch
+            if ch.isalpha():
+                tokens.append(token)
+                token = ""
+
+        month_assigned = False
+        tkns = {tk: 0 for tk in ('Y', 'W', 'D', 'H', 'm')}
+        for tkn in tokens:
+            tk = tkn[-1]
+            if tk == 'M':
+                if month_assigned:
+                    tkns['M'] = int(tkn[:len(tkn) - 1])
+                else:
+                    tkns['m'] = int(tkn[:len(tkn) - 1])
+                month_assigned = not month_assigned
+            else:
+                tkns[tk] = int(tkn[:len(tkn) - 1])
+        return timedelta(days=tkns['Y'] * 365 + tkns['W'] * 7 + tkns['D'], hours=tkns['H'], minutes=tkns['m'],
+                         seconds=0, microseconds=0)
+    else:
+        i = 0
+        if len(string) == 3:  # another very special inferred case
+            tokens.append(string[0])  # hour
+            tokens.append(string[1:])  # minute
+            return timedelta(hours=int(tokens[0]), minutes=int(tokens[1]))
+        elif len(string) == 5:  # very special inferred case
+            tokens.append(string[0])  # day
+            tokens.append(string[1:3])  # hour
+            tokens.append(string[3:])  # minute
+            return timedelta(days=int(tokens[0]), hours=int(tokens[1]), minutes=int(tokens[2]))
+        while i < len(string):
+            tokens.append(string[i:i + 2])
+            i += 2
+        print(tokens)
+        if len(tokens) == 1:
+            return timedelta(hours=int(tokens[0]))
+        if len(tokens) == 2:
+            return timedelta(hours=int(tokens[0]), minutes=int(tokens[1]))
+        if len(tokens) == 3: # for three token inferred path,
+            return timedelta(days=int(tokens[0]), hours=int(tokens[1]), minutes=int(tokens[2]))
+        if len(tokens) == 4:
+            return timedelta(weeks=int(tokens[0]), days=int(tokens[1]), hours=int(tokens[2]), minutes=int(tokens[3]))
+
+
+input("NO WON TIMEPSPNS")
+print(parse_datetime("+1D@3H"))
+"""
+print(parse_timespan('DT[1159]'))
+print(parse_timespan('DT[12M1D]'))
+print(parse_timespan('D[11M30D]'))
+print(parse_timespan('T[11H59M]'))
+print(parse_timespan(''))
+"""
+print(parse_timespan('11'))
+print(parse_timespan('1'))
+print(parse_timespan('1120'))
+print(parse_timespan('11030'))
+print(parse_timespan('130'))
+print(parse_timespan('11H'))
+input()
 
 from math import ceil
 
@@ -520,7 +716,8 @@ class InputField(Box):
         self.carat_origin = list(carat_pos)
         self.carat = 0  # the beginning of the string
 
-        self.text = ""
+        self.text = self.displayed_text = ""
+        self.displaying = False
 
     def type(self, char: Union[str, bytes]):
         pos = self.carat
@@ -541,6 +738,19 @@ class InputField(Box):
     def shift_carat(self, shift_amount: int):
         self.carat = clamp(self.carat + shift_amount, 0, len(self.text))
 
+    def get(self, vtype: [str, type]):
+        v = self.text
+        if vtype == 'd':
+            pass
+            # v = parse_date_as_date(self.text)
+        elif vtype == 't':
+            pass
+            # v = parse_time_as_time(self.text)
+        elif vtype == 'dt':
+            v = parse_datetime(self.text)
+        elif vtype == 'ts':
+            v = parse_timespan(self.text)
+        return v
     def validate(self, vtype: [str, type]):
         # 's' - string
         # 'd' - date
@@ -550,32 +760,48 @@ class InputField(Box):
         # if vtype == 's' or vtype is str:
         #    return True
         try:
-            if vtype == 'd':
-                return parse_date(self.text)
-            elif vtype == 't':
-                return parse_time(self.text)
-            elif vtype == 'dt':
-                return parse_datetime(self.text)
+            v = self.get(vtype)
+            self.displayed_text = str(v)
+            self.front_carat()
+            self.displaying = True
         except ValueError:
             self.clear()
-        return self.text
+            self.displaying = False
+            return ""
+        return self.displayed_text
 
     def bake(self):
         # if the carat is greater than the length of the box, we need to offset the view
         # by the displacement of the carat from the length of the box
 
         yi, xi = self.carat_origin
-        container_width = self.w - xi
-        lentex = min(container_width, len(self.text))  # the amount of characters we are replacing
-        offset = container_width * (self.carat // container_width)
-        if offset != 0:
-            offset -= 1
+        if not self.displaying:
+            container_width = self.w - xi
+            lentex = min(container_width, len(self.text))  # the amount of characters we are replacing
+            offset = container_width * (self.carat // container_width)
+            if offset != 0:
+                offset -= 1
 
-        for x in range(self.w - xi):
-            if x < lentex and x + offset < len(self.text):
-                self.grid[yi][xi + x] = self.text[x + offset]
-            else:
-                self.grid[yi][xi + x] = ' '
+            for x in range(self.w - xi):
+                if x < lentex and x + offset < len(self.text):
+                    self.grid[yi][xi + x] = self.text[x + offset]
+                else:
+                    self.grid[yi][xi + x] = ' '
+
+            if InputField.FIELD == self:
+                index = xi + self.carat % container_width
+                if self.carat > container_width:
+                    index += 1
+                self.grid[yi][index] = CARAT
+                # self.grid[yi][xi + min(self.w - xi, self.carat)] = CARAT
+        else:
+            lentex = min(self.w - xi, len(self.displayed_text))  # the amount of characters we are replacing
+            for x in range(self.w - xi):
+                if x < lentex:
+                    self.grid[yi][xi + x] = self.displayed_text[x]
+                else:
+                    self.grid[yi][xi + x] = ' '
+
         """
         # offs = len(self.text) - lentex  # we offset if carat is greater than self.w
 
@@ -587,13 +813,6 @@ class InputField(Box):
                 self.grid[yi][x] = ' '
             pass
         """
-        if InputField.FIELD == self:
-            index = xi + self.carat % container_width
-            if self.carat > container_width:
-                index += 1
-            self.grid[yi][index] = CARAT
-            # self.grid[yi][xi + min(self.w - xi, self.carat)] = CARAT
-
 
         # offs = max(len(self.text) - lentex, 0)
         # for i in range(xi, xi + lentex):
@@ -742,6 +961,7 @@ class TemplateMenu(Menu):
     def menu_display(self):
         super().menu_display()
 
+
 class GroupsMenu(Menu):
     def get_map(self):
         return InputMap(
@@ -860,6 +1080,7 @@ class GroupsMenu(Menu):
             select.place_center_text('(L)')
             select.place_hcenter_text('Through', ceil(select.h // 2) + 2)
         return box
+
 
 class AssignmentsMenu(Menu):
     def pop_if(self) -> bool:
@@ -1027,6 +1248,15 @@ class AssignmentEditor(Menu):
             self.on_enter()
     
     def on_enter(self):
+        if is_state(MINDEX, len(self.captions)):  # indicates create new assignment button
+            assignment_params = ["", "", None, None, None, "assignment"]
+            # name, description, start_date, due_date, increment, type
+            for i, field in enumerate(self.caption_fields):
+                if self.enabled[i] is not False:
+                    assignment_params[i] = field.get(self.field_types[i])
+            input(assignment_params)
+            get_focused_group().add_assignment(BaseAssignment(*assignment_params))
+            poprefrs()
         if is_state(MSIDE, BUTTON_COLUMN):
             if self.enabled[state(MINDEX)] is not None:
                 self.enabled[state(MINDEX)] = not self.enabled[state(MINDEX)]
@@ -1112,9 +1342,9 @@ class AssignmentEditor(Menu):
         self.captions = {
             "Name": 30,
             "Description": 90,
-            "Due Date": 20,  # YY-MM-DD hh:mm:ss (DateTime)
-            "Start Date": 20,
-            "Date Increment": 20,  # MM-WW-DD-hh-mm-ss (TimeSpan)
+            "Due Date": 24,  # YY-MM-DD hh:mm:ss (DateTime)
+            "Start Date": 24,
+            "Date Increment": 24,  # MM-WW-DD-hh-mm-ss (TimeSpan)
         }
         self.field_types = ['s', 's', 'dt', 'dt', 'ts']
         self.caption_fields: list[InputField] = []
@@ -1273,6 +1503,7 @@ TRIGGER_COMMANDS = {
 }
 
 
+
 def trigger(s: str, val: bool = None):
     if val is not None:
         TRIGGER_COMMANDS[s] = val
@@ -1282,6 +1513,16 @@ def trigger(s: str, val: bool = None):
 
 def is_trigger(s: str):
     return TRIGGER_COMMANDS[s]
+
+def poprefrs():
+    trigger(POP)
+    trigger(REFRS)
+
+def lit():
+    if not InputField.FIELD:
+        return
+    else:
+        input('\'' + InputField.FIELD.text + '\'')
 
 
 MSIDE = 'mside'
@@ -1316,6 +1557,7 @@ OUTPT = 'outpt'
 FQT = 'fqt'
 TRIGG = 'trigg'
 ATRIG = 'atrig'
+LIT = 'lit'
 FUNCTIONS = {
     GROUP: group_menu.show,
     ASSGN: assignments_menu.show,
@@ -1325,6 +1567,7 @@ FUNCTIONS = {
     TRIGG: lambda: input("".join(['(' + i + ')' for i in TRIGGER_COMMANDS if is_trigger(i)])),
     ATRIG: lambda: input("".join(['(' + i + ')' for i in TRIGGER_COMMANDS if not is_trigger(i)])),
     ADA: lambda: reset_menu_selection() or assignment_editor.show(),  # goes to assignment editor
+    LIT: lit
 }
 
 
@@ -1351,7 +1594,7 @@ def ui():
                   '-' * len(header), sep="\n")
 
             inp = get_input(':')
-            if inp[0] == "catch":
+            if inp and inp[0] == "catch":
                 raise e
 
 
@@ -1411,6 +1654,7 @@ clipboard = ""
 # 'dt' - datetime
 def get_field(field: InputField):
     InputField.FIELD = field
+    field.displaying = False
     menu = MENU.menu_display()
     while True:
         clear()
@@ -1426,6 +1670,8 @@ def get_field(field: InputField):
                 continue
             elif ch == b'`':
                 cmd = get_input(':')
+                if not cmd:
+                    continue
                 if cmd[0] == 'ccase':
                     if len(cmd) == 1 or cmd[1] == 't':  # title case
                         text = list(field.text)
