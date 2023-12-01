@@ -2,13 +2,15 @@ import datetime
 
 
 class BaseAssignment:
-    def __init__(self, name: str, description: str, start_date: datetime = None, due_date: datetime = None,
+    def __init__(self, name: str, description: str = "", start_date: datetime = None, due_date: datetime = None,
                  increment: datetime = None, type: str = None):
         self.name = name
         self.desc = description
         self.start_date = start_date
         self.due_date = due_date
         self.date_increment = increment
+
+
         self.type = type or "assignment"
 
     @property

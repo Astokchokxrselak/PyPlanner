@@ -499,6 +499,7 @@ class Box:
     # THIS REASSEMBLES THE BOX MATRIX
     # TODO: CLEAR_GRID METHOD
     def reset_grid(self):
+        self.grid = []
         for i in range(self.true_h):
             self.grid.append([])
             for j in range(self.true_w):
@@ -679,6 +680,7 @@ class Box:
                 # TODO: support for multiline titles
                 group.desc = desc[:max_desc_size - 3] + "..."  # ellipsis
             output: str = group.name + "\n" + group.desc + "\nClosest Due Date: " + str(group.get_closest_due_date()) + "\nClosest Start Date: " + str(group.get_closest_start_date())
+
             # desc should be the only multiline element in the box
             # self.h = ceil(len(group.desc) / self.w) + output.count('\n')
 
@@ -687,13 +689,29 @@ class Box:
             self.place_text(output, pn)
         elif isinstance(object, BaseAssignment):
             assignment = object
+            name = desc = due = start = inc = ""
+            name = assignment.name
             if assignment.has_description:
-                max_desc_size = (self.w - 2) * (self.h - 1)
+                max_desc_size = (self.w - 2)
                 desc = assignment.desc
-                if len(desc) - desc.count('\n') > max_desc_size:  # .h - 1 is for the title (should be one line)
-                    # TODO: support for multiline titles
-                    assignment.desc = desc[:max_desc_size - 3] + "..."  # ellipsis
-            self.place_text(assignment.name + '\n' + assignment.desc, pn)
+                if len(desc) > max_desc_size:  # .h - 1 is for the title (should be one line)
+                    # TODO: support for multiline titles and descriptions
+                    desc = '\n' + desc[:max_desc_size - 3] + "..."  # ellipsis
+                else:
+                    desc = '\n' + desc
+
+            if assignment.has_due_date:
+                due = '\n' + "Due Date: " + str(assignment.due_date)
+
+            if assignment.has_start_date:
+                start = '\n' + "Start Date: " +str(assignment.start_date)
+
+            outpt: str = name + desc + due + start + inc
+            self.h = outpt.count('\n') + 1
+
+            self.reset_grid()
+            print("HATCHE: ", self.h)
+            self.place_text(outpt, pn)
 
     def __repr__(self):
         string = ""
@@ -1135,14 +1153,27 @@ class AssignmentsMenu(Menu):
         BOTTOM_BUTTON_HEIGHT = 5
 
         y, i = 1, 0
-        bu = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, 1))
-        bu.place_hcenter_text('Unfinished-Assignments', 0)
-        bf = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, box.w // 2 + padding // 2 + 2))
-        bf.place_hcenter_text('Finished-Assignments', 0)
-
+        # TODO: height variations based on number of features the assignment
+        # supporst (description, due date, start date, etc.)
         while y < box.h - BOTTOM_BUTTON_HEIGHT:
+            bu = Box(box.w // 2 - padding // 2 - 2,1)
+            if i == 0:
+                bu.place_hcenter_text('Unfinished-Assignments', 0)
+
             if i < len(focused.in_progress):
+                print("PRE:", bu.true_h)
                 bu.loadup(focused.in_progress[i])
+                print("POS:", bu.true_h)
+
+            box.place(bu, (y, 1))
+            i += 1
+            print("TRUE_H", bu.true_h)
+            y += bu.true_h
+
+        y, i = 1, 0
+        while y < box.h - BOTTOM_BUTTON_HEIGHT:
+            bf = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, box.w // 2 + padding // 2 + 2))
+            bf.place_hcenter_text('Finished-Assignments', 0)
 
             if i < len(focused.completed):
                 bf.loadup(focused.completed[i])
@@ -1150,7 +1181,6 @@ class AssignmentsMenu(Menu):
             i += 1
             y += BOX_HEIGHT
 
-            bu = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, 1))
             bf = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, box.w // 2 + padding // 2 + 2))
 
         BOX_TO_ARROW_RATIO = 4
@@ -1257,7 +1287,7 @@ class AssignmentEditor(Menu):
             input(assignment_params)
             get_focused_group().add_assignment(BaseAssignment(*assignment_params))
             poprefrs()
-        if is_state(MSIDE, BUTTON_COLUMN):
+        elif is_state(MSIDE, BUTTON_COLUMN):
             if self.enabled[state(MINDEX)] is not None:
                 self.enabled[state(MINDEX)] = not self.enabled[state(MINDEX)]
 
