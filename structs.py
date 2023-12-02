@@ -34,9 +34,17 @@ class BaseAssignment:
         return self.date_increment is not None
 
     def time_to_due_date(self) -> int:
+        if not self.has_due_date:
+            return -1
+        if datetime.datetime.now() > self.due_date:
+            return 0
         return (datetime.datetime.now() - self.due_date).seconds
 
     def time_to_start_date(self) -> int:
+        if not self.has_start_date:
+            return -1
+        if datetime.datetime.now() > self.start_date:
+            return 0
         return (datetime.datetime.now() - self.start_date).seconds
 
     @property
