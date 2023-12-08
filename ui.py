@@ -98,7 +98,6 @@ parse_date("23Y")
 parse_date("12M")
 #  XXD (given day of the current month of the current year)
 parse_date("24D")
-input()
 
 
 def parse_time(string: str) -> datetime:
@@ -160,7 +159,7 @@ parse_time('59M')
 #  XX OR XXH (last minute of the given hour) 
 parse_time('11')
 parse_time('11H')
-input()
+# input()
 
 
 # DATETIMES
@@ -329,7 +328,7 @@ print(parse_datetime("11-28-23-10-00"))
 print(parse_datetime("T1159"))
 print(parse_datetime("D1230"))
 
-input()
+# input()
 # TIMEDELTA
 #  DDHHMM - day, hour, minute timespan (inferred path)
 # + - next day, same minute
@@ -424,7 +423,6 @@ def parse_timespan(string: str) -> timedelta:
             return timedelta(weeks=int(tokens[0]), days=int(tokens[1]), hours=int(tokens[2]), minutes=int(tokens[3]))
 
 
-input("NO WON TIMEPSPNS")
 print(parse_datetime("+1D@3H"))
 """
 print(parse_timespan('DT[1159]'))
@@ -439,7 +437,7 @@ print(parse_timespan('1120'))
 print(parse_timespan('11030'))
 print(parse_timespan('130'))
 print(parse_timespan('11H'))
-input()
+# input()
 
 from math import ceil
 
@@ -765,8 +763,13 @@ class InputField(Box):
             pass
             # v = parse_time_as_time(self.text)
         elif vtype == 'dt':
-            v = parse_datetime(self.text)
+            if not self.text:
+                v = now()
+            else:
+                v = parse_datetime(self.text)
         elif vtype == 'ts':
+            if not self.text:
+                v = timedelta()
             v = parse_timespan(self.text)
         return v
     def validate(self, vtype: [str, type]):
@@ -914,8 +917,8 @@ class InputMap:
             key = get_input()
             if not key:
                 return None
-            if isinstance(key, str):
-                return self.commands[key]()
+            if isinstance(key, list):
+                return self.commands[key[0]](*key[1:])
             else:
                 return self.inputs[key]()
         except KeyError:
@@ -1372,8 +1375,8 @@ class AssignmentEditor(Menu):
         self.captions = {
             "Name": 30,
             "Description": 90,
-            "Due Date": 24,  # YY-MM-DD hh:mm:ss (DateTime)
             "Start Date": 24,
+            "Due Date": 24,  # YY-MM-DD hh:mm:ss (DateTime)
             "Date Increment": 24,  # MM-WW-DD-hh-mm-ss (TimeSpan)
         }
         self.field_types = ['s', 's', 'dt', 'dt', 'ts']

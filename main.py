@@ -6,13 +6,9 @@ import alerts
 import win32api
 
 if __name__ == "__main__":
-    win32api.MessageBox(0,
-                        "The {0} \"{1}\" is due right now. Change the due date if you believe this is a mistake.".format(
-                            "assignment", "Black ue"), "Alert")
-
     # Start the assignment checking thread
-    assignment_thread = threading.Thread(target=alerts.check_assignments, daemon=True)
-    assignment_thread.start()
+    ui_thread = threading.Thread(target=ui.ui, daemon=True)
+    ui_thread.start()
 
     # Continue with your UI code or other components
-    ui.ui()
+    alerts.check_assignments()
