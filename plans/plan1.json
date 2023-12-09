@@ -1,0 +1,25 @@
+{
+  "groups": {
+    "Default Group": {
+      "Wash Clothes": {
+        "description": "Wash your grimy discusting glothes",
+        "startdate": {
+          "Y": 2023,
+          "M": 12,
+          "D": 9,
+          "h": 14,
+          "m": 46,
+          "s": 0
+        },
+        "duedate": {
+          "Y": 2023,
+          "M": 12,
+          "D": 9,
+          "h": 20,
+          "m": 0,
+          "s": 0
+        }
+      }
+    }
+  }
+}

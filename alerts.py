@@ -10,8 +10,6 @@ from structs import (BaseAssignment, Group,
 import tkinter
 import tkinter.messagebox
 
-import pyautogui
-
 import win32api
 tk = tkinter.Tk()
 tk.withdraw()  # hide tk...
@@ -64,8 +62,10 @@ alert_cache = {
 INDEXOF_START, INDEXOF_DUE = range(2)
 
 
-def check_assignments():
+def check_assignments(ui_thread):
     while True:
+        if not ui_thread.is_alive():
+            break
         try:
             # Check assignments and display alerts as needed
             for g in active_groups():

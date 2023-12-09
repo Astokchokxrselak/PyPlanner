@@ -5,11 +5,10 @@ class BaseAssignment:
     def __init__(self, name: str, description: str = "", start_date: datetime = None, due_date: datetime = None,
                  increment: datetime = None, type: str = None):
         self.name = name
-        self.desc = description
+        self.desc = description or ""
         self.start_date = start_date
         self.due_date = due_date
         self.date_increment = increment
-
 
         self.type = type or "assignment"
 
@@ -64,7 +63,7 @@ class BaseAssignment:
 class Group:
     def __init__(self, name, description, conditions):
         self.name = name
-        self.desc = description
+        self.desc = description or ""
         self.conds = conditions
 
         self.in_progress = []
@@ -104,6 +103,9 @@ class Group:
                 closest = candidate
         return closest
 
+    def __repr__(self):
+        return "Group<" + self.name + ">"
+
 
 groups: list[list['Group'], list['Group']] = [[], []]  # active groups  :  inactive groups
 
@@ -114,5 +116,9 @@ def active_groups():
 
 def inactive_groups():
     return groups[1]
+
+# todo: make a Menu class
+# has a setup function that uses the same stuff, but the other
+# things are automatically performed (clear, pop-check, etc.)
 
 

@@ -930,22 +930,6 @@ class InputMap:
             return self.run()
 
 
-# todo: make a Menu class
-# has a setup function that uses the same stuff, but the other
-# things are automatically performed (clear, pop-check, etc.)
-
-
-example_group = Group("Poppy Seed", "Seed assignments", None)
-example_group2 = Group("Pee Group", "We pee here", None)
-example_group3 = Group("Do Taxes", "Ewwwwwww", None)
-active_groups().append(example_group)
-active_groups().append(example_group2)
-active_groups().append(example_group3)
-
-example_group_inactive = Group("Mass Destruction Plots", "Plots to muder everyone", None)
-inactive_groups().append(example_group_inactive)
-
-
 class Menu:
     def get_map(self):
         return InputMap({},{})
