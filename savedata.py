@@ -44,6 +44,8 @@ def save_assignment(assignment: structs.BaseAssignment, group: Union[structs.Gro
         assignment_dict["startdate"] = datetime_to_dict(assignment.start_date)
     if assignment.has_due_date:
         assignment_dict["duedate"] = datetime_to_dict(assignment.due_date)
+    if assignment.is_persistent:
+        assignment_dict["interval"] = timedelta_to_dict(assignment.interval)
     gname = group.name if isinstance(group, structs.Group) else group
     statedata["groups"].setdefault(gname, {})
     statedata["groups"][gname][assignment.name] = assignment_dict
@@ -112,8 +114,8 @@ def load_group(group_name: str, g: dict):
             duedate = dict_to_datetime(a["duedate"])
 
         increment = None
-        if "increment" in a:
-            increment = dict_to_timedelta(a["increment"])
+        if "interval" in a:
+            increment = dict_to_timedelta(a["interval"])
 
         type = ""
         if "type" in a:

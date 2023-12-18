@@ -5,13 +5,42 @@
 # Menus will base their functionalities off of the current context
 # of the entire program.
 
-from typing import Union, Callable
+# TODO: callbacks for input fields
+#       submenus
+#       assignment editing
+
+from typing import Union, Callable, Sequence
 
 from msvcrt import getch
 
 import time
 from datetime import datetime, timedelta
 
+import alerts
+
+from structs import BaseAssignment, Group, active_groups, inactive_groups
+
+import savedata
+
+def slice_until(array: list, func: Callable):
+    res = []
+    for i in array:
+        if func(i):
+            res.append(i)
+        else:
+            break
+    return res
+
+
+def sslice_until(string: str, func: Callable):
+    res = ""
+    i = 0
+    for i in range(len(string)):
+        if func(string[i]):
+            res += string[i]
+        else:
+            break
+    return {"string": res, "end": i}
 
 #  datetime parsing
 
@@ -182,6 +211,7 @@ def get_datetime(alphstr: str, plus_count: int = 0) -> datetime:
     }
     return options[alphstr]
 
+
 def parse_datetime(string):
     if not string:
         raise ValueError("Parameter is in an invalid format.")
@@ -191,6 +221,51 @@ def parse_datetime(string):
 
     if string == 'N':
         return now()
+
+    # RELATIVE #
+
+    if string[0] == 'A':
+        sid, i = '', 1
+
+        while i < len(string):
+            if string[i].isnumeric():
+                sid += string[i]
+            else:
+                break
+            i += 1
+        if not sid:
+            input(sid)
+            raise ValueError
+        id = int(sid)
+
+        assignment: BaseAssignment = get_focused_group().in_progress[id]  # TODO: support completed assignments
+        date_type = string[i]  # last char before break
+        relative = None
+        if date_type == 'D':
+            if assignment.has_due_date:
+                relative = assignment.due_date
+        elif date_type == 'S':
+            if assignment.has_start_date:
+                relative = assignment.start_date
+        if not relative:
+            raise ValueError
+
+        i += 1
+        if i >= len(string):
+            return relative
+        elif string[i] != '+':
+            raise ValueError
+
+        i += 1
+        timespan = sslice_until(string[i:], lambda ch: ch != '+')
+        delta = parse_timespan(timespan["string"])
+
+        i = timespan["end"]
+        if string[i] == '@':
+            at_time = parse_time(string[i + 1:])
+            relative.replace(hour=at_time.hour, minute=at_time.minute, second=at_time.second)
+
+        return relative + delta
 
     # STRING/WEEKDAY #
 
@@ -327,6 +402,25 @@ print("2B0B: ", parse_datetime("11-28-23/10:00"))
 print(parse_datetime("11-28-23-10-00"))
 print(parse_datetime("T1159"))
 print(parse_datetime("D1230"))
+# if datetime begins with A, followed by a string of numbers and a character in the set {D, S}
+# then followed by a plus, then a valid timespan, we set the datetime relative to another assignment
+
+def datetime_to_string(date: datetime):
+    return f"{date.year - 2000}Y{date.month}M{date.day}D{date.hour}H{date.minute}M{date.second}S"
+
+def timedelta_to_string(td: timedelta):
+    days = td.days
+    weeks = days // 7
+    days = days % 7
+
+    seconds = td.seconds
+    hours = seconds // 3600
+    seconds = seconds % 3600
+
+    minutes = seconds // 60
+    seconds = seconds % 60
+
+    return f"{weeks}W{days}D{hours}h{minutes}m{seconds}s"
 
 # input()
 # TIMEDELTA
@@ -465,7 +559,8 @@ ANY_KEY = b''
 
 # todo: print warning origin's position
 def printwarn(*args):
-    print("WARNING:", *args)
+    if is_trigger(WARNS):
+        print("WARNING:", *args)
 
 
 def put(*args):
@@ -702,13 +797,16 @@ class Box:
                 due = '\n' + "Due Date: " + str(assignment.due_date)
 
             if assignment.has_start_date:
-                start = '\n' + "Start Date: " +str(assignment.start_date)
+                start = '\n' + "Start Date: " + str(assignment.start_date)
+
+            if assignment.is_persistent:
+                inc = '\n' + "Interval: " + str(assignment.interval)
 
             outpt: str = name + desc + due + start + inc
             self.h = outpt.count('\n') + 1
 
-            self.reset_grid()
-            print("HATCHE: ", self.h)
+            if not misc.get("noreset", False):
+                self.reset_grid()
             self.place_text(outpt, pn)
 
     def __repr__(self):
@@ -969,6 +1067,10 @@ class TemplateMenu(Menu):
 
 class GroupsMenu(Menu):
     def get_map(self):
+        def on_space():
+            state(FGRPS, int(state(MSIDE) > 0))
+            state(FGRP, state(MINDEX))
+            FUNCTIONS[ASSGN]()
         return InputMap(
             {  # inputs (covered by getch)
                 b's': lambda: state(MSIDE, MSIDE_LEFT if not is_state(MSIDE, MSIDE_LEFT) else MSIDE_UNDECIDED) or state(
@@ -976,7 +1078,7 @@ class GroupsMenu(Menu):
                 b'l': lambda: state(MSIDE,
                                     MSIDE_RIGHT if not is_state(MSIDE, MSIDE_RIGHT) else MSIDE_UNDECIDED) or state(
                     MINDEX, 0),
-                b' ': lambda: state(FGRPS, int(state(MSIDE) > 0)) or state(FGRP, state(MINDEX)) or FUNCTIONS[ASSGN](),
+                SPACEBAR: on_space,
                 UP: lambda: state(MINDEX, max(MINDEX_START,
                                               state(MINDEX) - 1) if not is_state(MSIDE, MSIDE_UNDECIDED) else state(
                     MINDEX)),
@@ -1090,11 +1192,9 @@ class GroupsMenu(Menu):
 class AssignmentsMenu(Menu):
     def pop_if(self) -> bool:
         return is_state(FGRP, NO_FOCUSED_GROUP)
+
     def __init__(self):
         super().__init__()
-
-    def show(self):
-        super().show()
     def menu_display(self):
         focused = groups[state(FGRPS)][state(FGRP)]
 
@@ -1136,11 +1236,9 @@ class AssignmentsMenu(Menu):
             "Groups List (G)", 1)
         box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
             "Save & Quit Planner (:qt)", 1)
-        # todo: : commands prompt normal input instead of getch
         BOTTOM_BUTTON_HEIGHT = 5
 
-        y, i = 1, 0
-        # TODO: height variations based on number of features the assignment
+        y, i = 1, state(MINDEX)
         # supporst (description, due date, start date, etc.)
         while y < box.h - BOTTOM_BUTTON_HEIGHT:
             bu = Box(box.w // 2 - padding // 2 - 2,1)
@@ -1148,13 +1246,12 @@ class AssignmentsMenu(Menu):
                 bu.place_hcenter_text('Unfinished-Assignments', 0)
 
             if i < len(focused.in_progress):
-                print("PRE:", bu.true_h)
                 bu.loadup(focused.in_progress[i])
-                print("POS:", bu.true_h)
+                if i == state(MINDEX):
+                    bu.set_border('*')
 
             box.place(bu, (y, 1))
             i += 1
-            print("TRUE_H", bu.true_h)
             y += bu.true_h
 
         y, i = 1, 0
@@ -1172,38 +1269,46 @@ class AssignmentsMenu(Menu):
 
         BOX_TO_ARROW_RATIO = 4
         box_width = box.w // 2 - padding // 2 - 2
-        arrows = box.place_box(box_width, BOTTOM_BUTTON_HEIGHT, (box.h - BOTTOM_BUTTON_HEIGHT, 1))
-        arrows.place_hcenter_text("Navigate", 0)
-        arrows.place_box(box_width // BOX_TO_ARROW_RATIO, BOTTOM_BUTTON_HEIGHT - 2, (1, 1)).place_center_text(
-            f'<<<<<\n<({BACK_LEFT})<\n<<<<<')  # .place_center_text(
-        arrows.place_box(box_width // BOX_TO_ARROW_RATIO, BOTTOM_BUTTON_HEIGHT - 2,
-                         (1, arrows.w - box_width // BOX_TO_ARROW_RATIO - 1)).place_center_text(
-            f'>>>>>\n>({NEXT_LEFT})>\n>>>>>')
+        if not TRIGGER_COMMANDS['hdnv']:
+            arrows = box.place_box(box_width, BOTTOM_BUTTON_HEIGHT, (box.h - BOTTOM_BUTTON_HEIGHT, 1))
+            arrows.place_hcenter_text("Navigate", 0)
 
-        #    ("(<)" + '-' * (box_width - 10) + "(>)\n") +
-        #    ("(<)" + "-Prev Page" + '-' * (box_width - 30) + "-Next Page" + "(>)\n") +
-        #    ("(<)" + '-' * (box_width - 10) + "(>)\n"))
+            select = arrows.place_box(box_width * 2 // BOX_TO_ARROW_RATIO - 1, BOTTOM_BUTTON_HEIGHT - 2,
+                                      (1,
+                                       arrows.w - 3 * box_width // BOX_TO_ARROW_RATIO - box_width // 2 // BOX_TO_ARROW_RATIO - 1))
+            select.place_hcenter_text('Index', ceil(select.h // 2))
+            select.place_center_text('(S)')
+            select.place_hcenter_text('Through', ceil(select.h // 2) + 2)
+            #    ("(<)" + '-' * (box_width - 10) + "(>)\n") +
+            #    ("(<)" + "-Prev Page" + '-' * (box_width - 30) + "-Next Page" + "(>)\n") +
+            #    ("(<)" + '-' * (box_width - 10) + "(>)\n"))
 
-        arrows = box.place_box(box_width, BOTTOM_BUTTON_HEIGHT, (box.h - BOTTOM_BUTTON_HEIGHT, box.w - box_width - 1))
-        arrows.place_hcenter_text("Navigate", 0)
-        arrows.place_box(box_width // BOX_TO_ARROW_RATIO, BOTTOM_BUTTON_HEIGHT - 2, (1, 1)).place_center_text(
-            f'<<<<<\n<({BACK_RIGHT})<\n<<<<<')  # .place_center_text(
-        arrows.place_box(box_width // BOX_TO_ARROW_RATIO, BOTTOM_BUTTON_HEIGHT - 2,
-                         (1, arrows.w - box_width // BOX_TO_ARROW_RATIO - 1)).place_center_text(
-            f'>>>>>\n>({NEXT_RIGHT})>\n>>>>>')
+            arrows = box.place_box(box_width, BOTTOM_BUTTON_HEIGHT,
+                                   (box.h - BOTTOM_BUTTON_HEIGHT, box.w - box_width - 1))
+            arrows.place_hcenter_text("Navigate", 0)
+            select = arrows.place_box(box_width * 2 // BOX_TO_ARROW_RATIO - 1, BOTTOM_BUTTON_HEIGHT - 2,
+                                      (1,
+                                       arrows.w - 3 * box_width // BOX_TO_ARROW_RATIO - box_width // 2 // BOX_TO_ARROW_RATIO - 1))
+            select.place_hcenter_text('Index', ceil(select.h // 2))
+            select.place_center_text('(L)')
+            select.place_hcenter_text('Through', ceil(select.h // 2) + 2)
 
         return box
     def get_map(self):
+        def edit_assignment(index: int):
+            assignment = get_focused_group().in_progress[index]  # TODO: support completed
+            FUNCTIONS[ADAED](assignment)
+
         return InputMap(
             {  # inputs (covered by getch)
                 b's': lambda: state(MSIDE, MSIDE_LEFT if not is_state(MSIDE, MSIDE_LEFT) else MSIDE_UNDECIDED),
                 b'l': lambda: state(MSIDE, MSIDE_RIGHT if not is_state(MSIDE, MSIDE_RIGHT) else MSIDE_UNDECIDED),
                 b'g': lambda: trigger(POP) or trigger(REFRS),
                 UP: lambda: state(MINDEX,
-                                  min(len(active_groups() if is_state(MSIDE, MSIDE_LEFT) else inactive_groups()),
-                                      state(MINDEX) + 1) if not is_state(MSIDE, MSIDE_UNDECIDED) else MINDEX),
-                DOWN: lambda: state(MINDEX, max(MINDEX_START, state(MINDEX) - 1) if not is_state(MSIDE,
-                                                         MSIDE_UNDECIDED) else MINDEX),
+                                  min(len(get_focused_group().in_progress) - 1,
+                                      state(MINDEX) + 1)), # if not is_state(MSIDE, MSIDE_UNDECIDED) else MINDEX),
+                DOWN: lambda: state(MINDEX, max(MINDEX_START, state(MINDEX) - 1)), # if not is_state(MSIDE,
+                SPACEBAR: lambda: edit_assignment(state(MINDEX)),                                         # MSIDE_UNDECIDED) else MINDEX),
                 b'c': lambda: FUNCTIONS[ADA](),
                 #    b'e': conditions_menu,
                 #    b's': scheduler_menu,
@@ -1249,6 +1354,7 @@ def has_focused_group() -> bool:
     return True
 
 def get_focused_group() -> Group:
+    print
     return groups[state(FGRPS)][state(FGRP)]
 
 
@@ -1263,15 +1369,49 @@ class AssignmentEditor(Menu):
                 self.find_index(1)
         else:
             self.on_enter()
-    
+
+    def show(self, assignment=None):
+        if assignment:
+            name, desc, sdat, ddat, incr = range(5)
+            self.caption_fields[name].text = assignment.name
+            if assignment.has_description:
+                self.enabled[desc] = True
+                self.caption_fields[desc].text = assignment.desc
+            else:
+                self.enabled[desc] = False
+                self.caption_fields[desc].text = ""
+
+            if assignment.has_start_date:
+                self.enabled[sdat] = True
+                self.caption_fields[sdat].text = datetime_to_string(assignment.start_date)
+            else:
+                self.enabled[sdat] = False
+                self.caption_fields[sdat].text = ""
+
+            if assignment.has_due_date:
+                self.enabled[ddat] = True
+                self.caption_fields[ddat].text = datetime_to_string(assignment.due_date)
+            else:
+                self.enabled[ddat] = False
+                self.caption_fields[ddat].text = ""
+
+            if assignment.is_persistent:
+                self.enabled[incr] = True
+                self.caption_fields[incr].text = timedelta_to_string(assignment.interval)
+            else:
+                self.enabled[incr] = False
+                self.caption_fields[incr].text = ""
+
+        super().show()
+
+
     def on_enter(self):
         if is_state(MINDEX, len(self.captions)):  # indicates create new assignment button
-            assignment_params = ["", "", None, None, None, "assignment"]
+            assignment_params = ["", "", None, None, None, ""]
             # name, description, start_date, due_date, increment, type
             for i, field in enumerate(self.caption_fields):
                 if self.enabled[i] is not False:
                     assignment_params[i] = field.get(self.field_types[i])
-            input(assignment_params)
             get_focused_group().add_assignment(BaseAssignment(*assignment_params))
             poprefrs()
         elif is_state(MSIDE, BUTTON_COLUMN):
@@ -1506,17 +1646,24 @@ def get_input(init: str = "", **specials) -> Union[bytes, str, None]:
         print('\r', end="")
         return key  # key.decode('ascii').lower()
 
+
 HDNV = 'hdnv'  # hide navigation menu
 REFRS = 'refrs'  # refresh the current menu
 POP = 'pop'  # pop the current menu (can be used to quit from the group menu)
 DEBUG = 'debug'  # enter debug mode (counts empty spaces and shows origins for each element)
 PMDEF = 'pmdef'  # whether pm is default or not
+ALRON = 'alron'  # turns alerts on or off
+NOMIN = 'nomin'  # toggles minimizing on due date alert
+WARNS = 'warns'  # toggles ui warnings
 TRIGGER_COMMANDS = {
     'hdnv': False,
     REFRS: False,
     POP: False,
     DEBUG: False,
-    PMDEF: True
+    PMDEF: True,
+    ALRON: True,
+    NOMIN: False,
+    WARNS: False
 }
 
 
@@ -1569,13 +1716,16 @@ assignments_menu = AssignmentsMenu()
 QT = 'qt'
 quit_menu = QuitMenu()
 ADA = 'ada'
+ADAED = 'adaed'
 assignment_editor = AssignmentEditor()
 OUTPT = 'outpt'
 FQT = 'fqt'
 TRIGG = 'trigg'
 ATRIG = 'atrig'
 LIT = 'lit'
-FUNCTIONS = {
+SAVE = 'save'
+RCACH = 'rcach'
+FUNCTIONS: dict[str, Callable] = {
     GROUP: group_menu.show,
     ASSGN: assignments_menu.show,
     QT: quit_menu.show,
@@ -1584,7 +1734,10 @@ FUNCTIONS = {
     TRIGG: lambda: input("".join(['(' + i + ')' for i in TRIGGER_COMMANDS if is_trigger(i)])),
     ATRIG: lambda: input("".join(['(' + i + ')' for i in TRIGGER_COMMANDS if not is_trigger(i)])),
     ADA: lambda: reset_menu_selection() or assignment_editor.show(),  # goes to assignment editor
-    LIT: lit
+    ADAED: lambda a: reset_menu_selection() or assignment_editor.show(a),
+    LIT: lit,
+    SAVE: savedata.save_all,
+    RCACH: alerts.clear_cache
 }
 
 
@@ -1601,6 +1754,7 @@ def ui():
     while True:
         try:
             group_menu.show()
+            print("YEEHEAHHAAHAHAHAHAHAHAHAHAHAHA")
         except Exception as e:
             print(e)
             header = "COMMAND HISTORY"

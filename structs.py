@@ -1,16 +1,23 @@
-import datetime
+from datetime import datetime, timedelta
 
 
 class BaseAssignment:
     def __init__(self, name: str, description: str = "", start_date: datetime = None, due_date: datetime = None,
-                 increment: datetime = None, type: str = None):
+                 interval: timedelta = None, type: str = None):
         self.name = name
         self.desc = description or ""
         self.start_date = start_date
         self.due_date = due_date
-        self.date_increment = increment
+        self.interval = interval
 
         self.type = type or "assignment"
+
+    def __repr__(self):
+        return f"Assignment(D:{self.due_date},S:{self.start_date},I:{self.interval})"
+
+    @property
+    def due_or_start_date(self):
+        return self.due_date or self.start_date
 
     @property
     def has_description(self) -> bool:
@@ -30,21 +37,30 @@ class BaseAssignment:
 
     @property
     def is_persistent(self) -> bool:
-        return self.date_increment is not None
+        return self.interval is not None
+
+    def invoke_persistence(self):
+        # should never be triggered because of alerts main sloop
+        while (self.due_date or self.start_date) < datetime.now():
+            if self.has_start_date:
+                self.start_date += self.interval
+            if self.has_due_date:
+                self.due_date += self.interval
+        #  TODO: perhaps give the option to have interval be added to the current time instead?
 
     def time_to_due_date(self) -> int:
         if not self.has_due_date:
             return -1
-        if datetime.datetime.now() > self.due_date:
+        if datetime.now() > self.due_date:
             return 0
-        return (datetime.datetime.now() - self.due_date).seconds
+        return (datetime.now() - self.due_date).seconds
 
     def time_to_start_date(self) -> int:
         if not self.has_start_date:
             return -1
-        if datetime.datetime.now() > self.start_date:
+        if datetime.now() > self.start_date:
             return 0
-        return (datetime.datetime.now() - self.start_date).seconds
+        return (datetime.now() - self.start_date).seconds
 
     @property
     def closer_date(self) -> datetime:
@@ -89,6 +105,8 @@ class Group:
         closest = None
         for a in self.in_progress:
             assignment: BaseAssignment = a
+            if not assignment.has_start_date:
+                continue
             candidate = assignment.start_date
             if not closest or candidate > closest:
                 closest = candidate
@@ -98,6 +116,8 @@ class Group:
         closest = None
         for a in self.in_progress:
             assignment: BaseAssignment = a
+            if not assignment.has_due_date:
+                continue
             candidate = assignment.due_date
             if not closest or candidate > closest:
                 closest = candidate
