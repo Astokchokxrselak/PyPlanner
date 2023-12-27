@@ -592,39 +592,45 @@ class Box:
     # THIS REASSEMBLES THE BOX MATRIX
     # TODO: CLEAR_GRID METHOD
     def reset_grid(self):
-        self.grid = []
-        for i in range(self.true_h):
-            self.grid.append([])
-            for j in range(self.true_w):
-                self.grid[i].append(' ')
-                if i in (0, self.true_h - 1):
-                    if j not in (0, self.true_w - 1):
-                        self.grid[i][j] = BOX_BORDER_H
-                elif j in (0, self.true_w - 1):
-                    self.grid[i][j] = BOX_BORDER_V
+        self.grid = [[] for i in range(len(self.grid))]
+        for grid in self.grid:
+            for i in range(self.true_h):
+                grid.append([])
+                for j in range(self.true_w):
+                    grid[i].append(' ')
+                    if i in (0, self.true_h - 1):
+                        if j not in (0, self.true_w - 1):
+                            grid[i][j] = BOX_BORDER_H
+                    elif j in (0, self.true_w - 1):
+                        grid[i][j] = BOX_BORDER_V
 
-    def set_vborder(self, ch):
+    def set_vborder(self, ch, index=-1):
+        grid = self.grid[index]
         for y in range(1, self.true_h - 1):
-            self.grid[y][0] = self.grid[y][self.true_w - 1] = ch
+            grid[y][0] = grid[y][self.true_w - 1] = ch
         return self
 
-    def set_hborder(self, ch):
+    def set_hborder(self, ch, index=-1):
+        grid = self.grid[index]
         for x in range(1, self.true_w - 1):
-            self.grid[0][x] = self.grid[self.true_h - 1][x] = ch
+            grid[0][x] = grid[self.true_h - 1][x] = ch
         return self
 
-    def set_border_default(self):
-        self.set_vborder('|')
-        self.set_hborder('=')
+    def set_border_default(self, index=-1):
+        self.set_vborder('|', index)
+        self.set_hborder('=', index)
 
-    def set_border(self, ch):
-        self.set_vborder(ch)
-        self.set_hborder(ch)
+    def set_border(self, ch, index=-1):
+        self.set_vborder(ch, index)
+        self.set_hborder(ch, index)
         return self
 
     # w - the width of the container, h - the height of the container (empty for square container)
     def __init__(self, w, h=-1, **kwargs):
         self.grid = []
+        self.layer_count = kwargs.get('layercount', 1)
+        for i in range(self.layer_count):
+            self.grid.append([])
 
         if h < 0:
             h = w
@@ -644,7 +650,7 @@ class Box:
         return self.w + 2
 
     # TODO: place pivot (center, top left, etc.)
-    def place(self, obj: 'Box', position: tuple):
+    def place(self, obj: 'Box', position: tuple, index=0):
         self.texts[position] = obj
     def place_text(self, text: str, position: tuple):
         # self.texts[position] = text
@@ -730,11 +736,7 @@ class Box:
             for i in range(len(t)):
                 ch = t[i]
                 if debug and ch == ' ':
-                    chdex = i % (10 + 25)
-                    if chdex < 10:
-                        ch = str(chdex % 10)
-                    else:
-                        ch = chr(chdex - 10 + ord('A'))
+                    ch = str(i % 10)
                 if ch == '\n':
                     x = xi
                     y += 1
@@ -1273,12 +1275,16 @@ class AssignmentsMenu(Menu):
             arrows = box.place_box(box_width, BOTTOM_BUTTON_HEIGHT, (box.h - BOTTOM_BUTTON_HEIGHT, 1))
             arrows.place_hcenter_text("Navigate", 0)
 
-            select = arrows.place_box(box_width * 2 // BOX_TO_ARROW_RATIO - 1, BOTTOM_BUTTON_HEIGHT - 2,
-                                      (1,
-                                       arrows.w - 3 * box_width // BOX_TO_ARROW_RATIO - box_width // 2 // BOX_TO_ARROW_RATIO - 1))
-            select.place_hcenter_text('Index', ceil(select.h // 2))
-            select.place_center_text('(S)')
-            select.place_hcenter_text('Through', ceil(select.h // 2) + 2)
+            select = arrows.place_box(box_width // BOX_TO_ARROW_RATIO, BOTTOM_BUTTON_HEIGHT - 2,
+                                      (1, 1))
+                                       # arrows.w - 3 * box_width // BOX_TO_ARROW_RATIO - box_width // 2 // BOX_TO_ARROW_RATIO - 1))
+            select.place_center_text('Choose (X)')
+
+
+            sort_mode = arrows.place_box(box_width // BOX_TO_ARROW_RATIO, BOTTOM_BUTTON_HEIGHT - 2,
+                                      (1, box_width - box_width // BOX_TO_ARROW_RATIO))
+            # select.
+
             #    ("(<)" + '-' * (box_width - 10) + "(>)\n") +
             #    ("(<)" + "-Prev Page" + '-' * (box_width - 30) + "-Next Page" + "(>)\n") +
             #    ("(<)" + '-' * (box_width - 10) + "(>)\n"))
@@ -1299,17 +1305,25 @@ class AssignmentsMenu(Menu):
             assignment = get_focused_group().in_progress[index]  # TODO: support completed
             FUNCTIONS[ADAED](assignment)
 
+        def remove_assignment():
+            group = get_focused_group()
+            index = state(MINDEX)
+            group.remove_assignment_at(index)
+            if index == group.in_progress_count:
+                state(MINDEX, state(MINDEX) - 1)
+
         return InputMap(
             {  # inputs (covered by getch)
-                b's': lambda: state(MSIDE, MSIDE_LEFT if not is_state(MSIDE, MSIDE_LEFT) else MSIDE_UNDECIDED),
+                b'x': lambda: state(MSIDE, MSIDE_LEFT if not is_state(MSIDE, MSIDE_LEFT) else MSIDE_UNDECIDED),
                 b'l': lambda: state(MSIDE, MSIDE_RIGHT if not is_state(MSIDE, MSIDE_RIGHT) else MSIDE_UNDECIDED),
                 b'g': lambda: trigger(POP) or trigger(REFRS),
-                UP: lambda: state(MINDEX,
+                DOWN: lambda: state(MINDEX,
                                   min(len(get_focused_group().in_progress) - 1,
                                       state(MINDEX) + 1)), # if not is_state(MSIDE, MSIDE_UNDECIDED) else MINDEX),
-                DOWN: lambda: state(MINDEX, max(MINDEX_START, state(MINDEX) - 1)), # if not is_state(MSIDE,
+                UP: lambda: state(MINDEX, max(MINDEX_START, state(MINDEX) - 1)), # if not is_state(MSIDE,
                 SPACEBAR: lambda: edit_assignment(state(MINDEX)),                                         # MSIDE_UNDECIDED) else MINDEX),
                 b'c': lambda: FUNCTIONS[ADA](),
+                BACKSPACE: remove_assignment
                 #    b'e': conditions_menu,
                 #    b's': scheduler_menu,
             },
@@ -1354,7 +1368,6 @@ def has_focused_group() -> bool:
     return True
 
 def get_focused_group() -> Group:
-    print
     return groups[state(FGRPS)][state(FGRP)]
 
 
@@ -1514,7 +1527,7 @@ class AssignmentEditor(Menu):
         screen_share = 2 / 3
         box_length = 3
         margin_x = 2
-        
+
         w, h = state(WIDTH), state(LNGTH)
         bx = Box(w, h)
         bx.place_hbar(0, 19)
@@ -1655,6 +1668,7 @@ PMDEF = 'pmdef'  # whether pm is default or not
 ALRON = 'alron'  # turns alerts on or off
 NOMIN = 'nomin'  # toggles minimizing on due date alert
 WARNS = 'warns'  # toggles ui warnings
+CFMDE = 'cfmde'  # toggles "confirm delete assignment" popup before removing an assignment
 TRIGGER_COMMANDS = {
     'hdnv': False,
     REFRS: False,
@@ -1663,7 +1677,8 @@ TRIGGER_COMMANDS = {
     PMDEF: True,
     ALRON: True,
     NOMIN: False,
-    WARNS: False
+    WARNS: False,
+    CFMDE: False
 }
 
 
