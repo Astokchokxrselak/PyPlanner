@@ -730,11 +730,7 @@ class Box:
             for i in range(len(t)):
                 ch = t[i]
                 if debug and ch == ' ':
-                    chdex = i % (10 + 25)
-                    if chdex < 10:
-                        ch = str(chdex % 10)
-                    else:
-                        ch = chr(chdex - 10 + ord('A'))
+                    ch = str(i % 10)
                 if ch == '\n':
                     x = xi
                     y += 1
@@ -1273,12 +1269,16 @@ class AssignmentsMenu(Menu):
             arrows = box.place_box(box_width, BOTTOM_BUTTON_HEIGHT, (box.h - BOTTOM_BUTTON_HEIGHT, 1))
             arrows.place_hcenter_text("Navigate", 0)
 
-            select = arrows.place_box(box_width * 2 // BOX_TO_ARROW_RATIO - 1, BOTTOM_BUTTON_HEIGHT - 2,
-                                      (1,
-                                       arrows.w - 3 * box_width // BOX_TO_ARROW_RATIO - box_width // 2 // BOX_TO_ARROW_RATIO - 1))
-            select.place_hcenter_text('Index', ceil(select.h // 2))
-            select.place_center_text('(S)')
-            select.place_hcenter_text('Through', ceil(select.h // 2) + 2)
+            select = arrows.place_box(box_width // BOX_TO_ARROW_RATIO, BOTTOM_BUTTON_HEIGHT - 2,
+                                      (1, 1))
+                                       # arrows.w - 3 * box_width // BOX_TO_ARROW_RATIO - box_width // 2 // BOX_TO_ARROW_RATIO - 1))
+            select.place_center_text('Choose (X)')
+
+
+            sort_mode = arrows.place_box(box_width // BOX_TO_ARROW_RATIO, BOTTOM_BUTTON_HEIGHT - 2,
+                                      (1, box_width - box_width // BOX_TO_ARROW_RATIO))
+            # select.
+
             #    ("(<)" + '-' * (box_width - 10) + "(>)\n") +
             #    ("(<)" + "-Prev Page" + '-' * (box_width - 30) + "-Next Page" + "(>)\n") +
             #    ("(<)" + '-' * (box_width - 10) + "(>)\n"))
@@ -1299,17 +1299,25 @@ class AssignmentsMenu(Menu):
             assignment = get_focused_group().in_progress[index]  # TODO: support completed
             FUNCTIONS[ADAED](assignment)
 
+        def remove_assignment():
+            group = get_focused_group()
+            index = state(MINDEX)
+            group.remove_assignment_at(index)
+            if index == group.in_progress_count:
+                state(MINDEX, state(MINDEX) - 1)
+
         return InputMap(
             {  # inputs (covered by getch)
-                b's': lambda: state(MSIDE, MSIDE_LEFT if not is_state(MSIDE, MSIDE_LEFT) else MSIDE_UNDECIDED),
+                b'x': lambda: state(MSIDE, MSIDE_LEFT if not is_state(MSIDE, MSIDE_LEFT) else MSIDE_UNDECIDED),
                 b'l': lambda: state(MSIDE, MSIDE_RIGHT if not is_state(MSIDE, MSIDE_RIGHT) else MSIDE_UNDECIDED),
                 b'g': lambda: trigger(POP) or trigger(REFRS),
-                UP: lambda: state(MINDEX,
+                DOWN: lambda: state(MINDEX,
                                   min(len(get_focused_group().in_progress) - 1,
                                       state(MINDEX) + 1)), # if not is_state(MSIDE, MSIDE_UNDECIDED) else MINDEX),
-                DOWN: lambda: state(MINDEX, max(MINDEX_START, state(MINDEX) - 1)), # if not is_state(MSIDE,
+                UP: lambda: state(MINDEX, max(MINDEX_START, state(MINDEX) - 1)), # if not is_state(MSIDE,
                 SPACEBAR: lambda: edit_assignment(state(MINDEX)),                                         # MSIDE_UNDECIDED) else MINDEX),
                 b'c': lambda: FUNCTIONS[ADA](),
+                BACKSPACE: remove_assignment
                 #    b'e': conditions_menu,
                 #    b's': scheduler_menu,
             },
@@ -1354,7 +1362,6 @@ def has_focused_group() -> bool:
     return True
 
 def get_focused_group() -> Group:
-    print
     return groups[state(FGRPS)][state(FGRP)]
 
 
@@ -1655,6 +1662,7 @@ PMDEF = 'pmdef'  # whether pm is default or not
 ALRON = 'alron'  # turns alerts on or off
 NOMIN = 'nomin'  # toggles minimizing on due date alert
 WARNS = 'warns'  # toggles ui warnings
+CFMDE = 'cfmde'  # toggles "confirm delete assignment" popup before removing an assignment
 TRIGGER_COMMANDS = {
     'hdnv': False,
     REFRS: False,
@@ -1663,7 +1671,8 @@ TRIGGER_COMMANDS = {
     PMDEF: True,
     ALRON: True,
     NOMIN: False,
-    WARNS: False
+    WARNS: False,
+    CFMDE: False
 }
 
 

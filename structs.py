@@ -84,7 +84,9 @@ class Group:
 
         self.in_progress = []
         self.completed = []
-
+    @property
+    def in_progress_count(self):
+        return len(self.in_progress)
     @property
     def assignment_count(self):
         return len(self.in_progress) + len(self.completed)
@@ -97,7 +99,7 @@ class Group:
         for a in self.in_progress:
             assignment: BaseAssignment = a
             candidate = assignment.closer_date
-            if not closest or candidate > closest:
+            if not closest or candidate < closest:
                 closest = candidate
         return closest
 
@@ -122,6 +124,9 @@ class Group:
             if not closest or candidate > closest:
                 closest = candidate
         return closest
+
+    def remove_assignment_at(self, index):
+        del self.in_progress[index]
 
     def __repr__(self):
         return "Group<" + self.name + ">"
