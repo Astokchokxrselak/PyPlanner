@@ -599,7 +599,7 @@ class Layer:
         for i in range(self.true_h):
             self.grid.append([])
             for j in range(self.true_w):
-                self.grid[i].append(' ')
+                self.grid[i].append('')
 
     def set_vborder(self, ch):
         for y in range(1, self.true_h - 1):
@@ -721,7 +721,7 @@ class Layer:
         debug = is_trigger(DEBUG)
         for p in self.texts:
             t = self.texts[p]
-            is_box = isinstance(t, Box)
+            is_box = isinstance(t, Box) or isinstance(t, Layer)
             if is_box:
                 t = str(t.bake())
             if debug:
@@ -804,6 +804,7 @@ class Layer:
 
             if not misc.get("noreset", False):
                 self.reset_grid()
+                self.set_border_default()
             self.place_text(outpt, pn)
 
     def __repr__(self):
@@ -816,6 +817,7 @@ class Layer:
         return self.__repr__()
 
 
+LAYER_INDEX_KEY = 'layer'
 class Box:
     def get_layer(self, index):
         return self._layers[index]
@@ -827,6 +829,7 @@ class Box:
         if index is not None:
             return self._layers[index].reset_grid()
         for grid in self._layers:
+            grid.w, grid.h = self.w, self.h
             grid.reset_grid()
 
     # w - the width of the container, h - the height of the container (empty for square container)
@@ -884,28 +887,28 @@ class Box:
         self.get_layer(index).replace_text(text, position)
 
     def place_hcenter_text(self, text, y: int = -1, *args: [str, int], **boxargs):
-        index = clamp(boxargs.get('index', self.default_layer), -self.layer_count, self.layer_count - 1)
+        index = clamp(boxargs.get(LAYER_INDEX_KEY, self.default_layer), -self.layer_count, self.layer_count - 1)
         self.get_layer(index).place_hcenter_text(text, y, *args)
 
     def place_vcenter_text(self, text, x: int = -1, *args: [str, int], **boxargs):
-        index = clamp(boxargs.get('index', self.default_layer), -self.layer_count, self.layer_count - 1)
+        index = clamp(boxargs.get(LAYER_INDEX_KEY, self.default_layer), -self.layer_count, self.layer_count - 1)
         self.get_layer(index).place_vcenter_text(text, x, *args)
 
     def place_center_text(self, text: str, **boxargs):
-        index = clamp(boxargs.get('index', self.default_layer), -self.layer_count, self.layer_count - 1)
+        index = clamp(boxargs.get(LAYER_INDEX_KEY, self.default_layer), -self.layer_count, self.layer_count - 1)
         self.get_layer(index).place_center_text(text)
 
     def place_vbar(self, x, *xs, **boxargs):
-        index = clamp(boxargs.get('index', self.default_layer), -self.layer_count, self.layer_count - 1)
+        index = clamp(boxargs.get(LAYER_INDEX_KEY, self.default_layer), -self.layer_count, self.layer_count - 1)
         self.get_layer(index).place_vbar(x, *xs)
 
     def place_hbar(self, y: int, *ys: int, **boxargs):
-        index = clamp(boxargs.get('index', self.default_layer), -self.layer_count, self.layer_count - 1)
+        index = clamp(boxargs.get(LAYER_INDEX_KEY, self.default_layer), -self.layer_count, self.layer_count - 1)
         self.get_layer(index).place_hbar(y, *ys)
 
     def place_box(self, w: int, h: int, position: tuple, *whps: [int, int, tuple], **boxkwargs) -> Union[
         list['Box'], 'Box']:
-        index = clamp(boxkwargs.get('index', self.default_layer), -self.layer_count, self.layer_count - 1)
+        index = clamp(boxkwargs.get(LAYER_INDEX_KEY, self.default_layer), -self.layer_count, self.layer_count - 1)
         return self.get_layer(index).place_box(w, h, position, *whps, **boxkwargs)
 
     def bake(self, index: Union[int, None] = None):
@@ -922,10 +925,8 @@ class Box:
         return self
 
     def loadup(self, object: Union['Group', 'BaseAssignment'], pn: tuple = (1, 2), pd: tuple = (2, 2), **misc):
-        index = clamp(misc.get('index', self.default_layer), -self.layer_count, self.layer_count - 1)
-        self.get_layer(index).loadup(object, pn, pd, **misc)
-
-        return
+        index = clamp(misc.get(LAYER_INDEX_KEY, self.default_layer), -self.layer_count, self.layer_count - 1)
+        layer = self.get_layer(index)
 
         # todo: verification of loaded strings based on line breaks
         self.marginx = 1
@@ -943,7 +944,7 @@ class Box:
 
             # self.reset_grid()
 
-            self.place_text(output, pn)
+            layer.place_text(output, pn)
         elif isinstance(object, BaseAssignment):
             assignment = object
             name = desc = due = start = inc = ""
@@ -971,17 +972,18 @@ class Box:
 
             if not misc.get("noreset", False):
                 self.reset_grid()
-            self.place_text(outpt, pn)
+                self.get_layer(-1).set_border_default()
+            layer.place_text(outpt, pn)
 
     def __repr__(self):
         string = ""
         for i in range(self.true_h):
             for j in range(self.true_w):
-                symbol, layer = ' ', -1
-                while not symbol.strip() and -layer <= self.layer_count:
+                symbol, layer = '', -1
+                while not symbol and -layer <= self.layer_count:
                     symbol = self._layers[layer].at(i, j)
                     layer -= 1
-                string += symbol
+                string += symbol or ' '
             string += "\n"
         return string
 
@@ -992,9 +994,12 @@ class Box:
 # todo: maybe try to have a blinking carat? too much work for now
 CARAT = '∣'
 
+
+# todo: consider inheriting from box
 # single line input field
-class InputField(Box):
+class InputField(Layer):
     FIELD = None
+
     def __init__(self, w: int, h: int, carat_pos: list[int, int] = (1, 1), **kwargs):
         super().__init__(w, h, **kwargs)
         self.carat_origin = list(carat_pos)
@@ -1040,6 +1045,7 @@ class InputField(Box):
                 v = timedelta()
             v = parse_timespan(self.text)
         return v
+
     def validate(self, vtype: [str, type]):
         # 's' - string
         # 'd' - date
@@ -1359,6 +1365,10 @@ class GroupsMenu(Menu):
         return box
 
 
+DELETING = 1
+VIEWING = 2
+
+
 class AssignmentsMenu(Menu):
     def pop_if(self) -> bool:
         return is_state(FGRP, NO_FOCUSED_GROUP)
@@ -1376,7 +1386,13 @@ class AssignmentsMenu(Menu):
         BOX_HEIGHT = 5
 
         w, h = state(WIDTH), state(LNGTH)
-        box = get_box(w, h)
+        box = Box(w, h, 3)
+        box.set_default_layer(0)
+
+        # assignment viewer
+        if state(MACT) & VIEWING:
+            box.place_box(box.w // 2 + padding // 2, h, (0, box.w // 2 - padding // 2 + 1), layer=-1)
+
         box.place_hbar(0)
         box.place_vbar(box.w // 2 - padding // 2, box.w // 2 + padding // 2)
         if len(focused.name) % 2 == 0:
@@ -1418,13 +1434,12 @@ class AssignmentsMenu(Menu):
 
             if i < len(focused.in_progress):
                 bu.loadup(focused.in_progress[i])
-            #    if i == state(MINDEX):
-            #        bu.set_border('*')
+                if i == state(MINDEX):
+                    bu.set_border('*')
 
             box.place(bu, (y, 1))
             i += 1
             y += bu.true_h
-            return box
 
         y, i = 1, 0
         while y < box.h - BOTTOM_BUTTON_HEIGHT:
@@ -1470,17 +1485,23 @@ class AssignmentsMenu(Menu):
             select.place_hcenter_text('Through', ceil(select.h // 2) + 2)
 
         return box
+
+    # when y is pressed
+    def confirm_delete(self):
+        state(MACT, state(MACT) ^ DELETING)  # removes deleting instead of setting to normal (may be viewing or doing something else)
+        group = get_focused_group()
+        index = state(MINDEX)
+        group.remove_assignment_at(index)
+        if index == group.in_progress_count:
+            state(MINDEX, state(MINDEX) - 1)
+
     def get_map(self):
         def edit_assignment(index: int):
             assignment = get_focused_group().in_progress[index]  # TODO: support completed
             FUNCTIONS[ADAED](assignment)
 
         def remove_assignment():
-            group = get_focused_group()
-            index = state(MINDEX)
-            group.remove_assignment_at(index)
-            if index == group.in_progress_count:
-                state(MINDEX, state(MINDEX) - 1)
+            # change action state
 
         return InputMap(
             {  # inputs (covered by getch)
@@ -1874,12 +1895,14 @@ def lit():
         input('\'' + InputField.FIELD.text + '\'')
 
 
-MSIDE = 'mside'
-MINDEX = 'midx'
-WIDTH = 'width'
-LNGTH = 'lngth'
-FGRP = 'fgrp'
-FGRPS = 'fgrps'
+MSIDE = 'mside'  # the side of the menu (left, right, middle, etc.)
+MINDEX = 'midx'  # the index of the menu for the current side (used for lists)
+WIDTH = 'width'  # the current width of the screen
+LNGTH = 'lngth'  # the current height (or length) of the screen
+FGRP = 'fgrp'  # the index of the focused group for active or inactive
+FGRPS = 'fgrps'  # the type of focused group (active or inactive)
+MACT = 'mact'  # bit field representing the action state of the current menu (deleting, viewing, etc.).
+NO_ACTION = 0
 
 NO_FOCUSED_GROUP = -1
 ACTIVE_GROUPS, INACTIVE_GROUPS = range(2)
@@ -1890,10 +1913,12 @@ STATE_COMMANDS = {
     WIDTH: 0,
     LNGTH: 0,
     FGRP: NO_FOCUSED_GROUP,
-    FGRPS: ACTIVE_GROUPS
+    FGRPS: ACTIVE_GROUPS,
+    MACT: 0,
 }
 
 
+RMENU = 'rmenu'
 GROUP = 'group'
 group_menu = GroupsMenu()
 ASSGN = 'assgn'
@@ -1911,6 +1936,7 @@ LIT = 'lit'
 SAVE = 'save'
 # RCACH = 'rcach'
 FUNCTIONS: dict[str, Callable] = {
+    RMENU: reset_menu_selection,
     GROUP: group_menu.show,
     ASSGN: assignments_menu.show,
     QT: quit_menu.show,
