@@ -592,28 +592,25 @@ class Box:
     # THIS REASSEMBLES THE BOX MATRIX
     # TODO: CLEAR_GRID METHOD
     def reset_grid(self):
-        self.grid = [[] for i in range(len(self.grid))]
-        for grid in self.grid:
-            for i in range(self.true_h):
-                grid.append([])
-                for j in range(self.true_w):
-                    grid[i].append(' ')
-                    if i in (0, self.true_h - 1):
-                        if j not in (0, self.true_w - 1):
-                            grid[i][j] = BOX_BORDER_H
-                    elif j in (0, self.true_w - 1):
-                        grid[i][j] = BOX_BORDER_V
+        self.grid = []
+        for i in range(self.true_h):
+            self.grid.append([])
+            for j in range(self.true_w):
+                self.grid[i].append(' ')
+                if i in (0, self.true_h - 1):
+                    if j not in (0, self.true_w - 1):
+                        self.grid[i][j] = BOX_BORDER_H
+                elif j in (0, self.true_w - 1):
+                    self.grid[i][j] = BOX_BORDER_V
 
     def set_vborder(self, ch, index=-1):
-        grid = self.grid[index]
         for y in range(1, self.true_h - 1):
-            grid[y][0] = grid[y][self.true_w - 1] = ch
+            self.grid[y][0] = self.grid[y][self.true_w - 1] = ch
         return self
 
     def set_hborder(self, ch, index=-1):
-        grid = self.grid[index]
         for x in range(1, self.true_w - 1):
-            grid[0][x] = grid[self.true_h - 1][x] = ch
+            self.grid[0][x] = self.grid[self.true_h - 1][x] = ch
         return self
 
     def set_border_default(self, index=-1):
@@ -628,9 +625,6 @@ class Box:
     # w - the width of the container, h - the height of the container (empty for square container)
     def __init__(self, w, h=-1, **kwargs):
         self.grid = []
-        self.layer_count = kwargs.get('layercount', 1)
-        for i in range(self.layer_count):
-            self.grid.append([])
 
         if h < 0:
             h = w
@@ -733,6 +727,7 @@ class Box:
             if debug:
                 t = '*' + t[1:]
             y, x = yi, xi = p
+
             for i in range(len(t)):
                 ch = t[i]
                 if debug and ch == ' ':
