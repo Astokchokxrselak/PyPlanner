@@ -587,7 +587,10 @@ def count_breaks(string: str):
 BOX_BORDER_H, BOX_BORDER_V = '=', '|'
 
 
-class Box:
+class Layer:
+    def at(self, y, x):
+        return self.grid[y][x]
+
     # THIS IS NOT A CLEAR GRID FUNCTION
     # THIS REASSEMBLES THE BOX MATRIX
     # TODO: CLEAR_GRID METHOD
@@ -597,11 +600,6 @@ class Box:
             self.grid.append([])
             for j in range(self.true_w):
                 self.grid[i].append(' ')
-                if i in (0, self.true_h - 1):
-                    if j not in (0, self.true_w - 1):
-                        self.grid[i][j] = BOX_BORDER_H
-                elif j in (0, self.true_w - 1):
-                    self.grid[i][j] = BOX_BORDER_V
 
     def set_vborder(self, ch):
         for y in range(1, self.true_h - 1):
@@ -646,6 +644,7 @@ class Box:
     # TODO: place pivot (center, top left, etc.)
     def place(self, obj: 'Box', position: tuple):
         self.texts[position] = obj
+
     def place_text(self, text: str, position: tuple):
         # self.texts[position] = text
         self.replace_text(text, position)
@@ -665,6 +664,7 @@ class Box:
             printwarn("Text with odd length cannot be hcentered on a container with even width", pos)
         if not len(text) % 2 and self.w % 2:
             printwarn("Text with even length cannot be hcentered on a container with odd width", pos)
+
     def place_vcenter_text(self, text, x: int = -1, *args: [str, int]):
         if not self.h % 2 and len(text) % 2:
             printwarn("Text with odd length cannot be vcentered on a container with even height")
@@ -681,7 +681,7 @@ class Box:
         break_count = count_breaks(text)
         if self.h % 2 != self.w % 2:
             printwarn("Text cannot be centered on a container with dimensions of unequal parity")
-        elif len(text) % 2 != self.w % 2\
+        elif len(text) % 2 != self.w % 2 \
                 or (break_count + 1) % 2 != self.h % 2:  # + 1 indicates number of lines
             printwarn("Text with unequal parity to dimensions of container cannot be centered")
         offset_y = count_breaks(text) // 2
@@ -768,7 +768,8 @@ class Box:
             if len(desc) - desc.count('\n') > max_desc_size:  # .h - 1 is for the title (should be one line)
                 # TODO: support for multiline titles
                 group.desc = desc[:max_desc_size - 3] + "..."  # ellipsis
-            output: str = group.name + "\n" + group.desc + "\nClosest Due Date: " + str(group.get_closest_due_date()) + "\nClosest Start Date: " + str(group.get_closest_start_date())
+            output: str = group.name + "\n" + group.desc + "\nClosest Due Date: " + str(
+                group.get_closest_due_date()) + "\nClosest Start Date: " + str(group.get_closest_start_date())
 
             # desc should be the only multiline element in the box
             # self.h = ceil(len(group.desc) / self.w) + output.count('\n')
@@ -809,6 +810,179 @@ class Box:
         string = ""
         for r in self.grid:
             string += "".join(r) + "\n"
+        return string
+
+    def __str__(self):
+        return self.__repr__()
+
+
+class Box:
+    def get_layer(self, index):
+        return self._layers[index]
+    # THIS IS NOT A CLEAR GRID FUNCTION
+    # THIS REASSEMBLES THE BOX MATRIX
+    # TODO: CLEAR_GRID METHOD
+
+    def reset_grid(self, index: Union[int, None] = None):
+        if index is not None:
+            return self._layers[index].reset_grid()
+        for grid in self._layers:
+            grid.reset_grid()
+
+    # w - the width of the container, h - the height of the container (empty for square container)
+    def __init__(self, w, h=-1, layer_count=1, **kwargs):
+        self.w = w
+
+        if h < 0:
+            h = w
+        self.h = h
+
+        self._layers = []
+        for i in range(layer_count):
+            self._layers.append(Layer(w, h, **kwargs))
+
+        self._layers[-1].set_border_default()
+
+        self.default_layer = kwargs.get("default_layer", -2)
+
+    def set_border(self, ch):
+        self._layers[-1].set_border(ch)
+
+    def set_hborder(self, ch):
+        self._layers[-1].set_hborder(ch)
+
+    def set_vborder(self, ch):
+        self._layers[-1].set_vborder(ch)
+
+    def set_default_layer(self, new):
+        self.default_layer = new
+
+    @property
+    def layer_count(self):
+        return len(self._layers)
+
+    @property
+    def true_h(self):
+        return self.h + 2
+
+    @property
+    def true_w(self):
+        return self.w + 2
+
+    # TODO: place pivot (center, top left, etc.)
+    def place(self, obj: 'Box', position: tuple, index=None):
+        index = clamp(index or self.default_layer, -self.layer_count, self.layer_count - 1)
+        self.get_layer(index).place(obj, position)
+
+    def place_text(self, text: str, position: tuple, index=None):
+        index = clamp(index or self.default_layer, -self.layer_count, self.layer_count - 1)
+        # self.texts[position] = text
+        self.get_layer(index).place_text(text, position)
+
+    def replace_text(self, text: str, position: tuple, index=None):
+        index = clamp(index or self.default_layer, -self.layer_count, self.layer_count - 1)
+        self.get_layer(index).replace_text(text, position)
+
+    def place_hcenter_text(self, text, y: int = -1, *args: [str, int], **boxargs):
+        index = clamp(boxargs.get('index', self.default_layer), -self.layer_count, self.layer_count - 1)
+        self.get_layer(index).place_hcenter_text(text, y, *args)
+
+    def place_vcenter_text(self, text, x: int = -1, *args: [str, int], **boxargs):
+        index = clamp(boxargs.get('index', self.default_layer), -self.layer_count, self.layer_count - 1)
+        self.get_layer(index).place_vcenter_text(text, x, *args)
+
+    def place_center_text(self, text: str, **boxargs):
+        index = clamp(boxargs.get('index', self.default_layer), -self.layer_count, self.layer_count - 1)
+        self.get_layer(index).place_center_text(text)
+
+    def place_vbar(self, x, *xs, **boxargs):
+        index = clamp(boxargs.get('index', self.default_layer), -self.layer_count, self.layer_count - 1)
+        self.get_layer(index).place_vbar(x, *xs)
+
+    def place_hbar(self, y: int, *ys: int, **boxargs):
+        index = clamp(boxargs.get('index', self.default_layer), -self.layer_count, self.layer_count - 1)
+        self.get_layer(index).place_hbar(y, *ys)
+
+    def place_box(self, w: int, h: int, position: tuple, *whps: [int, int, tuple], **boxkwargs) -> Union[
+        list['Box'], 'Box']:
+        index = clamp(boxkwargs.get('index', self.default_layer), -self.layer_count, self.layer_count - 1)
+        return self.get_layer(index).place_box(w, h, position, *whps, **boxkwargs)
+
+    def bake(self, index: Union[int, None] = None):
+        if index is not None:
+            return self.get_layer(index).bake()
+
+        # ensure that a line break is inserted in the middle for text
+        # whose length is greater than half of the container's width
+
+        debug = is_trigger(DEBUG)
+        for i in range(len(self._layers)):
+            layer = self._layers[i]
+            layer.bake()
+        return self
+
+    def loadup(self, object: Union['Group', 'BaseAssignment'], pn: tuple = (1, 2), pd: tuple = (2, 2), **misc):
+        index = clamp(misc.get('index', self.default_layer), -self.layer_count, self.layer_count - 1)
+        self.get_layer(index).loadup(object, pn, pd, **misc)
+
+        return
+
+        # todo: verification of loaded strings based on line breaks
+        self.marginx = 1
+        if isinstance(object, Group):
+            group = object
+            max_desc_size = (self.w - 2) * (self.h - 1)
+            desc = group.desc
+            if len(desc) - desc.count('\n') > max_desc_size:  # .h - 1 is for the title (should be one line)
+                # TODO: support for multiline titles
+                group.desc = desc[:max_desc_size - 3] + "..."  # ellipsis
+            output: str = group.name + "\n" + group.desc + "\nClosest Due Date: " + str(group.get_closest_due_date()) + "\nClosest Start Date: " + str(group.get_closest_start_date())
+
+            # desc should be the only multiline element in the box
+            # self.h = ceil(len(group.desc) / self.w) + output.count('\n')
+
+            # self.reset_grid()
+
+            self.place_text(output, pn)
+        elif isinstance(object, BaseAssignment):
+            assignment = object
+            name = desc = due = start = inc = ""
+            name = assignment.name
+            if assignment.has_description:
+                max_desc_size = (self.w - 2)
+                desc = assignment.desc
+                if len(desc) > max_desc_size:  # .h - 1 is for the title (should be one line)
+                    # TODO: support for multiline titles and descriptions
+                    desc = '\n' + desc[:max_desc_size - 3] + "..."  # ellipsis
+                else:
+                    desc = '\n' + desc
+
+            if assignment.has_due_date:
+                due = '\n' + "Due Date: " + str(assignment.due_date)
+
+            if assignment.has_start_date:
+                start = '\n' + "Start Date: " + str(assignment.start_date)
+
+            if assignment.is_persistent:
+                inc = '\n' + "Interval: " + str(assignment.interval)
+
+            outpt: str = name + desc + due + start + inc
+            self.h = outpt.count('\n') + 1
+
+            if not misc.get("noreset", False):
+                self.reset_grid()
+            self.place_text(outpt, pn)
+
+    def __repr__(self):
+        string = ""
+        for i in range(self.true_h):
+            for j in range(self.true_w):
+                symbol, layer = ' ', -1
+                while not symbol.strip() and -layer <= self.layer_count:
+                    symbol = self._layers[layer].at(i, j)
+                    layer -= 1
+                string += symbol
+            string += "\n"
         return string
 
     def __str__(self):
@@ -1112,7 +1286,6 @@ class GroupsMenu(Menu):
             1, "(G)", 2)
         box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
             "Actions", 1, "(A)", 2)
-
         box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
             "Clear All", 1, "(:cl)", 2)
         box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
@@ -1127,6 +1300,7 @@ class GroupsMenu(Menu):
 
         y, i = 1, boxes_per_page * page
         bu = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, 1))
+
         if len(active_groups()) > i:
             bu.loadup(active_groups()[i])
             if is_state(MSIDE, MSIDE_LEFT) and is_state(MINDEX, i):
@@ -1191,6 +1365,7 @@ class AssignmentsMenu(Menu):
 
     def __init__(self):
         super().__init__()
+
     def menu_display(self):
         focused = groups[state(FGRPS)][state(FGRP)]
 
@@ -1243,12 +1418,13 @@ class AssignmentsMenu(Menu):
 
             if i < len(focused.in_progress):
                 bu.loadup(focused.in_progress[i])
-                if i == state(MINDEX):
-                    bu.set_border('*')
+            #    if i == state(MINDEX):
+            #        bu.set_border('*')
 
             box.place(bu, (y, 1))
             i += 1
             y += bu.true_h
+            return box
 
         y, i = 1, 0
         while y < box.h - BOTTOM_BUTTON_HEIGHT:
@@ -1733,7 +1909,7 @@ TRIGG = 'trigg'
 ATRIG = 'atrig'
 LIT = 'lit'
 SAVE = 'save'
-RCACH = 'rcach'
+# RCACH = 'rcach'
 FUNCTIONS: dict[str, Callable] = {
     GROUP: group_menu.show,
     ASSGN: assignments_menu.show,
@@ -1746,7 +1922,7 @@ FUNCTIONS: dict[str, Callable] = {
     ADAED: lambda a: reset_menu_selection() or assignment_editor.show(a),
     LIT: lit,
     SAVE: savedata.save_all,
-    RCACH: alerts.clear_cache
+    # RCACH: alerts.clear_cache
 }
 
 
@@ -1893,3 +2069,5 @@ class InputFieldTemplateMenu(Menu):
         return bx
 """
 
+if __name__ == "__main__":
+    ui()
