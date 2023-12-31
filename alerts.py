@@ -5,6 +5,7 @@ import datetime
 import time
 
 import ui
+from tts import say
 from structs import (BaseAssignment, Group,
                      groups, active_groups, inactive_groups)
 
@@ -20,7 +21,9 @@ import ctypes
 
 import msvcrt
 
-from multiprocessing import Process
+import threading
+from threading import Thread
+
 from tkinter.messagebox import showinfo, showwarning
 import tkinter as tk
 import os
@@ -28,14 +31,23 @@ import os
 def warn(title: str, description: str):
     try:
         root = tk.Tk()
+
+        tts = Thread(target=lambda: say(description, ui.state(ui.VGEND)), daemon=True)
+        tts.start()
         showwarning(title, description)
         root.destroy()
+
+        tts.join()
     except:  # idk
         pass
+
 
 def info(title: str, description: str):
     try:
         root = tk.Tk()
+
+        tts = Thread(target=lambda: say(description, ui.state(ui.VGEND)), daemon=True)
+        tts.start()
         showinfo(title, description)
         root.destroy()
     except:  # idk
@@ -73,6 +85,7 @@ def alert_due(assignment: BaseAssignment):
         return
 
     warn("Assignment Due", f"The {assignment.type} {assignment.name} is due now.")
+
     # unfocus_window()
     # time.sleep(0.3)
     # tkinter.messagebox.showwarning("Due Alert", f"The {assignment.type} \"{assignment.name}\" should have been completed by now.")

@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from typing import Callable
 
 
 class BaseAssignment:
@@ -11,6 +12,24 @@ class BaseAssignment:
         self.interval = interval
 
         self.type = type or "assignment"
+
+    def set_name(self, name):
+        self.name = name
+
+    def set_desc(self, desc):
+        self.desc = desc
+
+    def set_start_date(self, date):
+        self.start_date = date
+
+    def set_due_date(self, date):
+        self.due_date = date
+
+    def set_interval(self, interval):
+        self.interval = interval
+
+    def set_type(self, type):
+        self.type = type
 
     def __repr__(self):
         return f"Assignment(D:{self.due_date},S:{self.start_date},I:{self.interval})"
@@ -75,7 +94,14 @@ class BaseAssignment:
         else:
             return self.due_date or self.start_date
 
-
+# Sorting Modes
+names = ["Dont Sort", "By Name", "By Due Date", "By Start Date", "By Closest Date"]
+UNSORTED = 0
+BY_NAME = 1
+BY_DUE_DATE = 2
+BY_START_DATE = 3
+BY_CLOSEST_DATE = 4
+SORT_COUNT = 5
 class Group:
     def __init__(self, name, description, conditions):
         self.name = name
@@ -84,6 +110,7 @@ class Group:
 
         self.in_progress = []
         self.completed = []
+
     @property
     def in_progress_count(self):
         return len(self.in_progress)
@@ -128,6 +155,22 @@ class Group:
     def remove_assignment_at(self, index):
         del self.in_progress[index]
 
+    def in_progress_sorted(self, type: int, descending=False):
+        if type == UNSORTED:
+            return self.in_progress
+        key: Callable = None
+        if type == BY_NAME:
+            key = lambda a: a.name
+        elif type == BY_DUE_DATE:
+            key = lambda a: a.due_date or -1
+        elif type == BY_START_DATE:
+            key = lambda a: a.start_date or -1
+        elif type == BY_CLOSEST_DATE:
+            key = lambda a: a.closer_date or -1
+        assignments = self.in_progress[:]
+        assignments.sort(key=key, reverse=descending)
+        return assignments
+
     def __repr__(self):
         return "Group<" + self.name + ">"
 
@@ -147,3 +190,9 @@ def inactive_groups():
 # things are automatically performed (clear, pop-check, etc.)
 
 
+def increment_all_persistent():
+    for group in active_groups():
+        for a in group.in_progress:
+            assignment: BaseAssignment = a
+            if assignment.is_persistent:
+                assignment.invoke_persistence()
