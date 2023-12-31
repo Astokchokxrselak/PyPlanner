@@ -63,6 +63,11 @@ def save_group(group: structs.Group):
 
 
 def save_all():
+    global statedata
+    statedata = {
+        "groups": {}
+    }
+
     for group in structs.active_groups():
         save_group(group)
 

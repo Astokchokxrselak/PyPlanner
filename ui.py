@@ -19,8 +19,14 @@ from datetime import datetime, timedelta
 import alerts
 
 from structs import BaseAssignment, Group, active_groups, inactive_groups
+import structs
 
 import savedata
+
+
+def ilerp(i1: int, i2: int, t: float) -> int:
+    return int(i1 + (i2 - i1) * t)
+
 
 def slice_until(array: list, func: Callable):
     res = []
@@ -42,6 +48,7 @@ def sslice_until(string: str, func: Callable):
             break
     return {"string": res, "end": i}
 
+
 #  datetime parsing
 
 # ANY DELIMITER CAN BE USED TO SEPARATE DATE TIME SYMBOLS AS LONG AS THE SYMBOL IS ONE CHARACTER, NON-ALPHANUMERIC, AND IS USED CONSISTENTLY
@@ -52,7 +59,7 @@ def sslice_until(string: str, func: Callable):
 # WHEN SYMBOLS ARE ABSENT THE ORDER OF INPUT MUST BE PRESERVED IN THE ORDER SPECIFIED BY THE SYMBOLS
 # WHEN SYMBOLS ARE ABSENT INPUT SEGMENTS [PAIRS OF DIGITS] MUST BE ENTERED AS PAIRS, WITH NUMBERS LESS THAN 10 INCLUDING A LEADING 0
 
-def now(**replacements) -> datetime: 
+def now(**replacements) -> datetime:
     replacements.setdefault('second', 0)
     replacements.setdefault('microsecond', 0)
     return datetime.now().replace(**replacements)
@@ -61,6 +68,8 @@ def now(**replacements) -> datetime:
 #  Options:
 
 MONTH_MAX = 12
+
+
 def parse_date(string: str) -> datetime:
     delimiter = ''
     for ch in string:
@@ -69,7 +78,7 @@ def parse_date(string: str) -> datetime:
             break
     if delimiter:
         tokens = string.split(delimiter)
-    else: # no delimiter => tokens are packed together => divisible by either 2 or 3
+    else:  # no delimiter => tokens are packed together => divisible by either 2 or 3
         tokens = []
         i = 0
         if len(string) % 3 == 0:
@@ -86,22 +95,23 @@ def parse_date(string: str) -> datetime:
             i += token_size
         print("DATES: ", tokens)
 
-    start = tokens[0] # the start must be consistent for the rest of the tokens
-    if len(start) == 2: # inferred date path
-        if len(tokens) == 2: # month-day path
+    start = tokens[0]  # the start must be consistent for the rest of the tokens
+    if len(start) == 2:  # inferred date path
+        if len(tokens) == 2:  # month-day path
             month, day = int(tokens[0]), int(tokens[1])
             return now(month=month, day=day)
-        elif len(tokens) == 3: # year-month-day path
+        elif len(tokens) == 3:  # year-month-day path
             month, day, year = map(lambda t: int(t), tokens)
             print(month)
             return now(year=2000 + year, month=month, day=day)
-    elif len(start) == 3: # noninferred date path; symbols are specified
-        datetkns = {'D':now().day, 'Y':now().year - 2000, 'M':now().month} # day, year, month
+    elif len(start) == 3:  # noninferred date path; symbols are specified
+        datetkns = {'D': now().day, 'Y': now().year - 2000, 'M': now().month}  # day, year, month
         for token in tokens:
             if token[-1] in datetkns:
                 tk = token[-1]
                 datetkns[tk] = int(token[:len(token) - 1])
         return now(year=2000 + datetkns['Y'], month=datetkns['M'], day=datetkns['D'])
+
 
 # DATES
 # CONTEXT OF ANNOTATIONS: WHEN USED AS A START/DUE DATE
@@ -144,7 +154,7 @@ def parse_time(string: str) -> datetime:
             break
     if delimiter:
         tokens = string.split(delimiter)
-    else: # no delimiter => tokens are packed together => divisible by either 2 or 3
+    else:  # no delimiter => tokens are packed together => divisible by either 2 or 3
         tokens = []
         i = 0
         if len(string) % 3 == 0:
@@ -165,10 +175,10 @@ def parse_time(string: str) -> datetime:
         if len(tokens) == 1:
             hour = int(tokens[0])
             minute = 59
-        if len(tokens) == 2: # hour-minute path
+        if len(tokens) == 2:  # hour-minute path
             hour, minute = int(tokens[0]), int(tokens[1])
-    else: # noninferred time path; symbols are specified
-        timetkns = {'H':now().hour, 'M':59} # hour, minute
+    else:  # noninferred time path; symbols are specified
+        timetkns = {'H': now().hour, 'M': 59}  # hour, minute
         for token in tokens:
             if token[-1] in timetkns:
                 tk = token[-1]
@@ -179,15 +189,18 @@ def parse_time(string: str) -> datetime:
             hour += 12
     return now(hour=hour, minute=minute)
 
+
 # TIMES
 #  XX(T)XX OR XXHXXM (hour)
 parse_time('1159')
 parse_time('11H59M')
 #  XXM (minute of the current hour)
 parse_time('59M')
-#  XX OR XXH (last minute of the given hour) 
+#  XX OR XXH (last minute of the given hour)
 parse_time('11')
 parse_time('11H')
+
+
 # input()
 
 
@@ -324,7 +337,7 @@ def parse_datetime(string):
         date = parse_date(tokens[0])
         datetime = date.replace(hour=time.hour, minute=time.minute)
         return datetime
-    if len(delimiters) == 1: # inferred datetime path
+    if len(delimiters) == 1:  # inferred datetime path
         tokens = string.split(delimiters[0])
         # inferred datetime path has exactly 5 tokens; MM(D)DD(D)YY(D)HH(D)MM
         month, day, year, hour, minute = map(lambda t: int(t), tokens)
@@ -352,7 +365,8 @@ def parse_datetime(string):
                     tokens.append(token)
                     token = ""
 
-            tkns = {'D': now().day, 'Y': now().year - 2000, 'M': now().month, 'h': now().hour, 'm': now().minute}  # hour, minute
+            tkns = {'D': now().day, 'Y': now().year - 2000, 'M': now().month, 'h': now().hour,
+                    'm': now().minute}  # hour, minute
             month_assigned = False
             for token in tokens:
                 if token[-1] in tkns:
@@ -385,13 +399,14 @@ def parse_datetime(string):
                 print(parse_date(string[:6]))
                 return parse_date(string[:6]).replace(hour=11, minute=59)
             elif len(tokens) >= 4:
-                date = parse_date(string[:6]) # first three pairs of characters represent date
-                time = parse_time(string[6:]) # last two pairs of characters represent time
+                date = parse_date(string[:6])  # first three pairs of characters represent date
+                time = parse_time(string[6:])  # last two pairs of characters represent time
                 return date.replace(hour=time.hour, minute=time.minute)
             else:
                 raise ValueError("Parameter is in an invalid format.")
 
         return now(day=tkns['D'], year=tkns['Y'] + 2000, month=tkns['M'], hour=tkns['h'], minute=tkns['m'])
+
 
 # print("1A0A: ", parse_datetime("11M28D23Y10H00M"))
 print("------------------")
@@ -402,11 +417,14 @@ print("2B0B: ", parse_datetime("11-28-23/10:00"))
 print(parse_datetime("11-28-23-10-00"))
 print(parse_datetime("T1159"))
 print(parse_datetime("D1230"))
+
+
 # if datetime begins with A, followed by a string of numbers and a character in the set {D, S}
 # then followed by a plus, then a valid timespan, we set the datetime relative to another assignment
 
 def datetime_to_string(date: datetime):
     return f"{date.year - 2000}Y{date.month}M{date.day}D{date.hour}H{date.minute}M{date.second}S"
+
 
 def timedelta_to_string(td: timedelta):
     days = td.days
@@ -421,6 +439,7 @@ def timedelta_to_string(td: timedelta):
     seconds = seconds % 60
 
     return f"{weeks}W{days}D{hours}h{minutes}m{seconds}s"
+
 
 # input()
 # TIMEDELTA
@@ -453,7 +472,7 @@ def parse_timespan(string: str) -> timedelta:
         return datetime - now()
     else:
         leading_char = leading_chars[0]
-        if leading_char.isalpha(): # and leading_chars[1] == '[':
+        if leading_char.isalpha():  # and leading_chars[1] == '[':
             # if string[-1] != ']':
             #    raise ValueError("Parameter is in an invalid format.")
             if leading_char == 'D':
@@ -511,7 +530,7 @@ def parse_timespan(string: str) -> timedelta:
             return timedelta(hours=int(tokens[0]))
         if len(tokens) == 2:
             return timedelta(hours=int(tokens[0]), minutes=int(tokens[1]))
-        if len(tokens) == 3: # for three token inferred path,
+        if len(tokens) == 3:  # for three token inferred path,
             return timedelta(days=int(tokens[0]), hours=int(tokens[1]), minutes=int(tokens[2]))
         if len(tokens) == 4:
             return timedelta(weeks=int(tokens[0]), days=int(tokens[1]), hours=int(tokens[2]), minutes=int(tokens[3]))
@@ -555,6 +574,8 @@ COPY = b'\x03'
 PASTE = b'\x16'
 BACKSPACE = b'\x08'
 ANY_KEY = b''
+def is_key_special(key):
+    return key in (SPECIAL, UP, RIGHT, DOWN, LEFT, SPACEBAR, ENTER, COPY, PASTE, BACKSPACE)
 
 
 # todo: print warning origin's position
@@ -569,6 +590,7 @@ def put(*args):
 
 def clamp(vl: int, mn: int, mx: int) -> int:
     return max(min(vl, mx), mn)
+
 
 """
 win32api.MessageBeep(0x00000040)
@@ -587,7 +609,16 @@ def count_breaks(string: str):
 BOX_BORDER_H, BOX_BORDER_V = '=', '|'
 
 
-class Box:
+class Layer:
+    def at(self, y, x):
+        return self.grid[y][x]
+
+    def clear_grid(self):
+        for x in range(self.w):
+            for y in range(self.h):
+                self.grid[y + 1][x + 1] = ' '
+        self.texts = {}
+
     # THIS IS NOT A CLEAR GRID FUNCTION
     # THIS REASSEMBLES THE BOX MATRIX
     # TODO: CLEAR_GRID METHOD
@@ -596,30 +627,25 @@ class Box:
         for i in range(self.true_h):
             self.grid.append([])
             for j in range(self.true_w):
-                self.grid[i].append(' ')
-                if i in (0, self.true_h - 1):
-                    if j not in (0, self.true_w - 1):
-                        self.grid[i][j] = BOX_BORDER_H
-                elif j in (0, self.true_w - 1):
-                    self.grid[i][j] = BOX_BORDER_V
+                self.grid[i].append('')
 
-    def set_vborder(self, ch, index=-1):
+    def set_vborder(self, ch):
         for y in range(1, self.true_h - 1):
             self.grid[y][0] = self.grid[y][self.true_w - 1] = ch
         return self
 
-    def set_hborder(self, ch, index=-1):
+    def set_hborder(self, ch):
         for x in range(1, self.true_w - 1):
             self.grid[0][x] = self.grid[self.true_h - 1][x] = ch
         return self
 
-    def set_border_default(self, index=-1):
-        self.set_vborder('|', index)
-        self.set_hborder('=', index)
+    def set_border_default(self):
+        self.set_vborder('|')
+        self.set_hborder('=')
 
-    def set_border(self, ch, index=-1):
-        self.set_vborder(ch, index)
-        self.set_hborder(ch, index)
+    def set_border(self, ch):
+        self.set_vborder(ch)
+        self.set_hborder(ch)
         return self
 
     # w - the width of the container, h - the height of the container (empty for square container)
@@ -644,8 +670,9 @@ class Box:
         return self.w + 2
 
     # TODO: place pivot (center, top left, etc.)
-    def place(self, obj: 'Box', position: tuple, index=0):
+    def place(self, obj: 'Box', position: tuple):
         self.texts[position] = obj
+
     def place_text(self, text: str, position: tuple):
         # self.texts[position] = text
         self.replace_text(text, position)
@@ -665,6 +692,7 @@ class Box:
             printwarn("Text with odd length cannot be hcentered on a container with even width", pos)
         if not len(text) % 2 and self.w % 2:
             printwarn("Text with even length cannot be hcentered on a container with odd width", pos)
+
     def place_vcenter_text(self, text, x: int = -1, *args: [str, int]):
         if not self.h % 2 and len(text) % 2:
             printwarn("Text with odd length cannot be vcentered on a container with even height")
@@ -681,7 +709,7 @@ class Box:
         break_count = count_breaks(text)
         if self.h % 2 != self.w % 2:
             printwarn("Text cannot be centered on a container with dimensions of unequal parity")
-        elif len(text) % 2 != self.w % 2\
+        elif len(text) % 2 != self.w % 2 \
                 or (break_count + 1) % 2 != self.h % 2:  # + 1 indicates number of lines
             printwarn("Text with unequal parity to dimensions of container cannot be centered")
         offset_y = count_breaks(text) // 2
@@ -721,13 +749,12 @@ class Box:
         debug = is_trigger(DEBUG)
         for p in self.texts:
             t = self.texts[p]
-            is_box = isinstance(t, Box)
+            is_box = isinstance(t, Box) or isinstance(t, Layer)
             if is_box:
                 t = str(t.bake())
             if debug:
-                t = '*' + t[1:]
+                t = '`' + t[1:]
             y, x = yi, xi = p
-
             for i in range(len(t)):
                 ch = t[i]
                 if debug and ch == ' ':
@@ -769,7 +796,8 @@ class Box:
             if len(desc) - desc.count('\n') > max_desc_size:  # .h - 1 is for the title (should be one line)
                 # TODO: support for multiline titles
                 group.desc = desc[:max_desc_size - 3] + "..."  # ellipsis
-            output: str = group.name + "\n" + group.desc + "\nClosest Due Date: " + str(group.get_closest_due_date()) + "\nClosest Start Date: " + str(group.get_closest_start_date())
+            output: str = group.name + "\n" + group.desc + "\nClosest Due Date: " + str(
+                group.get_closest_due_date()) + "\nClosest Start Date: " + str(group.get_closest_start_date())
 
             # desc should be the only multiline element in the box
             # self.h = ceil(len(group.desc) / self.w) + output.count('\n')
@@ -781,6 +809,181 @@ class Box:
             assignment = object
             name = desc = due = start = inc = ""
             name = assignment.name
+            if assignment.has_description:
+                max_desc_size = (self.w - 2)
+                desc = assignment.desc
+                if len(desc) > max_desc_size:  # .h - 1 is for the title (should be one line)
+                    # TODO: support for multiline titles and descriptions
+                    desc = '\n' + desc[:max_desc_size - 3] + "..."  # ellipsis
+                else:
+                    desc = '\n' + desc
+
+            if assignment.has_due_date:
+                input(type(assignment.due_date))
+                due = '\n' + "Due Date: " + str(assignment.due_date)
+
+            if assignment.has_start_date:
+                start = '\n' + "Start Date: " + str(assignment.start_date)
+
+            if assignment.is_persistent:
+                inc = '\n' + "Interval: " + str(assignment.interval)
+
+            outpt: str = name + desc + due + start + inc
+            self.h = outpt.count('\n') + 1
+
+            if not misc.get("noreset", False):
+                self.reset_grid()
+                self.set_border_default()
+            self.place_text(outpt, pn)
+
+    def __repr__(self):
+        string = ""
+        for r in self.grid:
+            string += "".join([s or ' ' for s in r]) + "\n"
+        return string
+
+    def __str__(self):
+        return self.__repr__()
+
+
+LAYER_INDEX_KEY = 'layer'
+
+
+class Box:
+    def get_layer(self, index):
+        return self._layers[index]
+
+    # THIS IS NOT A CLEAR GRID FUNCTION
+    # THIS REASSEMBLES THE BOX MATRIX
+    # TODO: CLEAR_GRID METHOD
+
+    def reset_grid(self, index: Union[int, None] = None):
+        if index is not None:
+            return self._layers[index].reset_grid()
+        for grid in self._layers:
+            grid.w, grid.h = self.w, self.h
+            grid.reset_grid()
+
+    # w - the width of the container, h - the height of the container (empty for square container)
+    def __init__(self, w, h=-1, layer_count=1, **kwargs):
+        self.w = w
+
+        if h < 0:
+            h = w
+        self.h = h
+
+        self._layers = []
+        for i in range(layer_count):
+            self._layers.append(Layer(w, h, **kwargs))
+
+        self._layers[-1].set_border_default()
+
+        self.default_layer = kwargs.get("default_layer", -2)
+
+    def set_border(self, ch):
+        self._layers[-1].set_border(ch)
+
+    def set_hborder(self, ch):
+        self._layers[-1].set_hborder(ch)
+
+    def set_vborder(self, ch):
+        self._layers[-1].set_vborder(ch)
+
+    def set_default_layer(self, new):
+        self.default_layer = new
+
+    @property
+    def layer_count(self):
+        return len(self._layers)
+
+    @property
+    def true_h(self):
+        return self.h + 2
+
+    @property
+    def true_w(self):
+        return self.w + 2
+
+    # TODO: place pivot (center, top left, etc.)
+    def place(self, obj: 'Box', position: tuple, index=None):
+        index = clamp(index or self.default_layer, -self.layer_count, self.layer_count - 1)
+        self.get_layer(index).place(obj, position)
+
+    def place_text(self, text: str, position: tuple, index=None):
+        index = clamp(index or self.default_layer, -self.layer_count, self.layer_count - 1)
+        # self.texts[position] = text
+        self.get_layer(index).place_text(text, position)
+
+    def replace_text(self, text: str, position: tuple, index=None):
+        index = clamp(index or self.default_layer, -self.layer_count, self.layer_count - 1)
+        self.get_layer(index).replace_text(text, position)
+
+    def place_hcenter_text(self, text, y: int = -1, *args: [str, int], **boxargs):
+        index = clamp(boxargs.get(LAYER_INDEX_KEY, self.default_layer), -self.layer_count, self.layer_count - 1)
+        self.get_layer(index).place_hcenter_text(text, y, *args)
+
+    def place_vcenter_text(self, text, x: int = -1, *args: [str, int], **boxargs):
+        index = clamp(boxargs.get(LAYER_INDEX_KEY, self.default_layer), -self.layer_count, self.layer_count - 1)
+        self.get_layer(index).place_vcenter_text(text, x, *args)
+
+    def place_center_text(self, text: str, **boxargs):
+        index = clamp(boxargs.get(LAYER_INDEX_KEY, self.default_layer), -self.layer_count, self.layer_count - 1)
+        self.get_layer(index).place_center_text(text)
+
+    def place_vbar(self, x, *xs, **boxargs):
+        index = clamp(boxargs.get(LAYER_INDEX_KEY, self.default_layer), -self.layer_count, self.layer_count - 1)
+        self.get_layer(index).place_vbar(x, *xs)
+
+    def place_hbar(self, y: int, *ys: int, **boxargs):
+        index = clamp(boxargs.get(LAYER_INDEX_KEY, self.default_layer), -self.layer_count, self.layer_count - 1)
+        self.get_layer(index).place_hbar(y, *ys)
+
+    def place_box(self, w: int, h: int, position: tuple, *whps: [int, int, tuple], **boxkwargs) -> Union[
+        list['Box'], 'Box']:
+        index = clamp(boxkwargs.get(LAYER_INDEX_KEY, self.default_layer), -self.layer_count, self.layer_count - 1)
+        return self.get_layer(index).place_box(w, h, position, *whps, **boxkwargs)
+
+    def bake(self, index: Union[int, None] = None):
+        if index is not None:
+            return self.get_layer(index).bake()
+
+        # ensure that a line break is inserted in the middle for text
+        # whose length is greater than half of the container's width
+
+        debug = is_trigger(DEBUG)
+        for i in range(len(self._layers)):
+            layer = self._layers[i]
+            layer.bake()
+        return self
+
+    def loadup(self, object: Union['Group', 'BaseAssignment'], pn: tuple = (1, 2), pd: tuple = (2, 2), **misc):
+        index = clamp(misc.get(LAYER_INDEX_KEY, self.default_layer), -self.layer_count, self.layer_count - 1)
+        layer = self.get_layer(index)
+
+        # todo: verification of loaded strings based on line breaks
+        self.marginx = 1
+        if isinstance(object, Group):
+            group = object
+            max_desc_size = (self.w - 2) * (self.h - 1)
+            desc = group.desc
+            if len(desc) - desc.count('\n') > max_desc_size:  # .h - 1 is for the title (should be one line)
+                # TODO: support for multiline titles
+                group.desc = desc[:max_desc_size - 3] + "..."  # ellipsis
+            output: str = group.name + "\n" + group.desc + "\nClosest Due Date: " + str(
+                group.get_closest_due_date()) + "\nClosest Start Date: " + str(group.get_closest_start_date())
+
+            # desc should be the only multiline element in the box
+            # self.h = ceil(len(group.desc) / self.w) + output.count('\n')
+
+            # self.reset_grid()
+
+            layer.place_text(output, pn)
+        elif isinstance(object, BaseAssignment):
+            assignment = object
+            name = desc = due = start = inc = ""
+            name = assignment.name
+            if len(name) > self.w - 2:
+                name = name[:self.w - 2 - 3] + "..."
             if assignment.has_description:
                 max_desc_size = (self.w - 2)
                 desc = assignment.desc
@@ -804,12 +1007,19 @@ class Box:
 
             if not misc.get("noreset", False):
                 self.reset_grid()
-            self.place_text(outpt, pn)
+                self.get_layer(-1).set_border_default()
+            layer.place_text(outpt, pn)
 
     def __repr__(self):
         string = ""
-        for r in self.grid:
-            string += "".join(r) + "\n"
+        for i in range(self.true_h):
+            for j in range(self.true_w):
+                symbol, layer = '', -1
+                while not symbol and -layer <= self.layer_count:
+                    symbol = self._layers[layer].at(i, j)
+                    layer -= 1
+                string += symbol or ' '
+            string += "\n"
         return string
 
     def __str__(self):
@@ -819,11 +1029,17 @@ class Box:
 # todo: maybe try to have a blinking carat? too much work for now
 CARAT = '∣'
 
-# single line input field
-class InputField(Box):
+
+# todo: consider inheriting from box
+# todo: implement right margins, right now only left
+
+# SINGLE LINE input field
+class InputField(Layer):
     FIELD = None
+
     def __init__(self, w: int, h: int, carat_pos: list[int, int] = (1, 1), **kwargs):
         super().__init__(w, h, **kwargs)
+        self.set_border_default()
         self.carat_origin = list(carat_pos)
         self.carat = 0  # the beginning of the string
 
@@ -834,12 +1050,15 @@ class InputField(Box):
         pos = self.carat
         self.text = self.text[:pos] + (char if isinstance(char, str) else char.decode('ascii')) + self.text[pos:]
         self.shift_carat(len(char))  # move the carat forward
+
     def delete(self, del_count: int):
-        self.text = self.text[:max(0, self.carat - del_count)] + self.text[self.carat:]
+        self.text = self.text[:max(self.marginx, self.carat - del_count)] + self.text[self.carat:]
         self.shift_carat(-del_count)
+
     def clear(self):
         self.back_carat()
         self.text = ""
+
     def front_carat(self):
         self.shift_carat(len(self.text))
 
@@ -847,10 +1066,11 @@ class InputField(Box):
         self.shift_carat(-len(self.text))
 
     def shift_carat(self, shift_amount: int):
-        self.carat = clamp(self.carat + shift_amount, 0, len(self.text))
+        self.carat = clamp(self.carat + shift_amount, self.marginx, len(self.text))
 
     def get(self, vtype: [str, type]):
         v = self.text
+
         if vtype == 'd':
             pass
             # v = parse_date_as_date(self.text)
@@ -860,13 +1080,25 @@ class InputField(Box):
         elif vtype == 'dt':
             if not self.text:
                 v = now()
+            elif self.text.strip() == "None":
+                v = None
             else:
                 v = parse_datetime(self.text)
         elif vtype == 'ts':
-            if not self.text:
-                v = timedelta()
-            v = parse_timespan(self.text)
+            if self.text.strip() == "None":
+                v = None
+            else:
+                if not self.text:
+                    v = timedelta()
+                v = parse_timespan(self.text)
         return v
+
+    def valid_get(self, vtype: str):
+        try:
+            return self.get(vtype)
+        except ValueError:
+            return None
+
     def validate(self, vtype: [str, type]):
         # 's' - string
         # 'd' - date
@@ -893,12 +1125,13 @@ class InputField(Box):
         yi, xi = self.carat_origin
         if not self.displaying:
             container_width = self.w - xi
-            lentex = min(container_width, len(self.text))  # the amount of characters we are replacing
-            offset = container_width * (self.carat // container_width)
+            lentex = min(container_width, len(self.text))  #  the amount of characters we are replacing with other characters
+            offset = container_width * (self.carat // container_width)  #  how many field-widths we offset the text by (incase the carat leaves the box)
             if offset != 0:
-                offset -= 1
+                offset -= 1  # leave space for the border?
 
             for x in range(self.w - xi):
+                #  minus one for the border
                 if x < lentex and x + offset < len(self.text):
                     self.grid[yi][xi + x] = self.text[x + offset]
                 else:
@@ -967,14 +1200,19 @@ def is_state(string: str, val: int):
 MSIDE_LEFT, MSIDE_RIGHT = -1, 1
 MSIDE_UNDECIDED = 0
 
-MINDEX_START = 0
+MIDX_START = 0
+UNUSED_MIDX_START = -1
+
+
 def reset_menu_selection():
     state(MSIDE, MSIDE_UNDECIDED)
-    state(MINDEX, MINDEX_START)
+    state(MIDXA, MIDX_START)
+    state(MIDXB, UNUSED_MIDX_START)
 
 # the planner ui
 # ui width: 48
 # max width of assignment name lines: 20
+
 padding = 36  # space between in progress and completed
 
 # condition keys:
@@ -994,19 +1232,19 @@ padding = 36  # space between in progress and completed
 # Closest End Date: 11:59PM-11/25/23
 
 
-
 SCREEN_WIDTH = 133
 SCREEN_HEIGHT = 20
-
 
 BACK_LEFT, NEXT_LEFT = 'Z', 'X'
 BACK_RIGHT, NEXT_RIGHT = ',', '.'
 
 
 class InputMap:
-    def __init__(self, inputs: dict[bytes, Callable], commands: dict[str, Callable]):
+    def __init__(self, inputs: dict[bytes, Callable], commands: dict[str, Callable], **options):
         self.inputs = inputs
         self.commands = commands
+        self.any_key_pre = options.get("any_key_pre", False)  # execute any_key
+
     def run(self):
         try:
             key = get_input()
@@ -1015,9 +1253,13 @@ class InputMap:
             if isinstance(key, list):
                 return self.commands[key[0]](*key[1:])
             else:
+                if self.any_key_pre:
+                    value = self.inputs[ANY_KEY](key)  # returns a truthy value if overrides behavior of other keys
+                    if value is not None:
+                        return value
                 return self.inputs[key]()
         except KeyError:
-            if isinstance(key, bytes):
+            if not self.any_key_pre and isinstance(key, bytes):
                 try:
                     return self.inputs[ANY_KEY](key)
                 except KeyError:
@@ -1027,7 +1269,8 @@ class InputMap:
 
 class Menu:
     def get_map(self):
-        return InputMap({},{})
+        return InputMap({}, {})
+
     def __init__(self):
         self.map = self.get_map()
 
@@ -1055,9 +1298,11 @@ class Menu:
     def pop_if(self) -> bool:
         return False
 
+
 class TemplateMenu(Menu):
     def get_map(self):
-        return InputMap({},{})
+        return InputMap({}, {})
+
     def menu_display(self):
         super().menu_display()
 
@@ -1065,23 +1310,27 @@ class TemplateMenu(Menu):
 class GroupsMenu(Menu):
     def get_map(self):
         def on_space():
+            old_idx, old_side = state(MIDXA), state(MSIDE)
             state(FGRPS, int(state(MSIDE) > 0))
-            state(FGRP, state(MINDEX))
+            state(FGRP, state(MIDXA))
             FUNCTIONS[ASSGN]()
+            state(MIDXA, old_idx)
+            state(MSIDE, old_side)
+
         return InputMap(
             {  # inputs (covered by getch)
-                b's': lambda: state(MSIDE, MSIDE_LEFT if not is_state(MSIDE, MSIDE_LEFT) else MSIDE_UNDECIDED) or state(
-                    MINDEX, 0),
-                b'l': lambda: state(MSIDE,
+                b'x': lambda: state(MSIDE, MSIDE_LEFT if not is_state(MSIDE, MSIDE_LEFT) else MSIDE_UNDECIDED) or state(
+                    MIDXA, 0),
+                b'n': lambda: state(MSIDE,
                                     MSIDE_RIGHT if not is_state(MSIDE, MSIDE_RIGHT) else MSIDE_UNDECIDED) or state(
-                    MINDEX, 0),
+                    MIDXA, 0),
                 SPACEBAR: on_space,
-                UP: lambda: state(MINDEX, max(MINDEX_START,
-                                              state(MINDEX) - 1) if not is_state(MSIDE, MSIDE_UNDECIDED) else state(
-                    MINDEX)),
-                DOWN: lambda: state(MINDEX,
+                UP: lambda: state(MIDXA, max(MIDX_START,
+                                              state(MIDXA) - 1) if not is_state(MSIDE, MSIDE_UNDECIDED) else state(
+                    MIDXA)),
+                DOWN: lambda: state(MIDXA,
                                     min(len(active_groups() if is_state(MSIDE, MSIDE_LEFT) else inactive_groups()) - 1,
-                                        state(MINDEX) + 1) if not is_state(MSIDE, MSIDE_UNDECIDED) else state(MINDEX))
+                                        state(MIDXA) + 1) if not is_state(MSIDE, MSIDE_UNDECIDED) else state(MIDXA))
                 #    b'a': actions_menu,
                 #    b'e': conditions_menu,
                 #    b's': scheduler_menu,
@@ -1090,6 +1339,7 @@ class GroupsMenu(Menu):
                 #    'qt': quit_menu,
                 #    'cl': clear_all_data,
             })
+
     def menu_display(self):
         box = super().menu_display()
         BOX_HEIGHT = 6
@@ -1113,7 +1363,6 @@ class GroupsMenu(Menu):
             1, "(G)", 2)
         box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
             "Actions", 1, "(A)", 2)
-
         box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
             "Clear All", 1, "(:cl)", 2)
         box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
@@ -1124,20 +1373,21 @@ class GroupsMenu(Menu):
         BOTTOM_BUTTON_HEIGHT = 5
 
         boxes_per_page = int((box.h - BOTTOM_BUTTON_HEIGHT) / BOX_HEIGHT)
-        page = state(MINDEX) // boxes_per_page
+        page = state(MIDXA) // boxes_per_page
 
         y, i = 1, boxes_per_page * page
         bu = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, 1))
+
         if len(active_groups()) > i:
             bu.loadup(active_groups()[i])
-            if is_state(MSIDE, MSIDE_LEFT) and is_state(MINDEX, i):
+            if is_state(MSIDE, MSIDE_LEFT) and is_state(MIDXA, i):
                 bu.set_border('*')
         bu.place_hcenter_text('Activated-Groups', 0)
 
         bf = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, box.w // 2 + padding // 2 + 2))
         if len(inactive_groups()) > i:
             bf.loadup(inactive_groups()[i])
-            if is_state(MSIDE, MSIDE_RIGHT) and is_state(MINDEX, i):
+            if is_state(MSIDE, MSIDE_RIGHT) and is_state(MIDXA, i):
                 bf.set_border('*')
         bf.place_hcenter_text('Inactivated-Groups', 0)
 
@@ -1150,12 +1400,12 @@ class GroupsMenu(Menu):
 
             if i < len(active_groups()):
                 bu.loadup(active_groups()[i])
-                if is_state(MSIDE, MSIDE_LEFT) and is_state(MINDEX, i):
+                if is_state(MSIDE, MSIDE_LEFT) and is_state(MIDXA, i):
                     bu.set_border('*')
 
             if i < len(inactive_groups()):
                 bf.loadup(inactive_groups()[i])
-                if is_state(MSIDE, MSIDE_RIGHT) and is_state(MINDEX, i):
+                if is_state(MSIDE, MSIDE_RIGHT) and is_state(MIDXA, i):
                     bf.set_border('*')
 
         BOX_TO_ARROW_RATIO = 5
@@ -1168,7 +1418,7 @@ class GroupsMenu(Menu):
                                       (1,
                                        arrows.w - 3 * box_width // BOX_TO_ARROW_RATIO - box_width // 2 // BOX_TO_ARROW_RATIO - 1))
             select.place_hcenter_text('Index', ceil(select.h // 2))
-            select.place_center_text('(S)')
+            select.place_center_text('(X)')
             select.place_hcenter_text('Through', ceil(select.h // 2) + 2)
             #    ("(<)" + '-' * (box_width - 10) + "(>)\n") +
             #    ("(<)" + "-Prev Page" + '-' * (box_width - 30) + "-Next Page" + "(>)\n") +
@@ -1181,19 +1431,37 @@ class GroupsMenu(Menu):
                                       (1,
                                        arrows.w - 3 * box_width // BOX_TO_ARROW_RATIO - box_width // 2 // BOX_TO_ARROW_RATIO - 1))
             select.place_hcenter_text('Index', ceil(select.h // 2))
-            select.place_center_text('(L)')
+            select.place_center_text('(N)')
             select.place_hcenter_text('Through', ceil(select.h // 2) + 2)
         return box
 
 
+DELETING = 1 << 0
+VIEWING = 1 << 1
+EDITING = 1 << 2
+
+
+VIEW_PROPERTY_COUNT = 6
+DESCRIPTION_CHARACTER_LIMIT = 150
 class AssignmentsMenu(Menu):
+    def get_current_assignment(self) -> BaseAssignment:
+        return get_focused_group().in_progress_sorted(state(ASTKY))[state(MIDXA)]
+
     def pop_if(self) -> bool:
         return is_state(FGRP, NO_FOCUSED_GROUP)
 
     def __init__(self):
         super().__init__()
+
+        self._field_cache = []
+        self._field_callbacks = []
+
+    def reset_cache(self):
+        self._field_cache = []
+
     def menu_display(self):
         focused = groups[state(FGRPS)][state(FGRP)]
+        in_progress = focused.in_progress_sorted(state(ASTKY))
 
         if is_trigger(POP):
             trigger(POP)
@@ -1202,7 +1470,151 @@ class AssignmentsMenu(Menu):
         BOX_HEIGHT = 5
 
         w, h = state(WIDTH), state(LNGTH)
-        box = get_box(w, h)
+        box = Box(w, h, 3)
+        box.set_default_layer(0)
+
+        # assignment viewer
+        # todo: maybe allow a property viewer where you
+        #       scroll from page to page to view different properties in their entirety
+        if state(MACT) & VIEWING:  # todo: show this specific key control somewhere (i.e. (V)iew More)
+            selected_idx, index = state(MIDXB), 0
+
+            def get_field(length, callback: Callable = None):
+                if index >= len(self._field_cache):
+                    field = InputField(length, 1, [1, 2])
+                    self._field_cache.append(field)
+                    self._field_callbacks.append(callback or no_op)
+                    return field
+                return self._field_cache[index]
+
+            def try_select(field: InputField, text: str="", displayed_text: Union[str, None]=None):
+                nonlocal index
+
+                field.back_carat()
+                field.clear_grid()
+                field.clear()
+                if index == selected_idx:
+                    field.set_border('*')
+                    if InputField.FIELD == field:
+                        field.clear()
+                        field.type(text)  # only called once when menudisplay is used in getfield
+                    else:
+                        field.place_text(displayed_text or text, (1, 2))
+                else:
+                    field.set_border_default()
+                    field.place_text(displayed_text or text, (1, 2))
+                index += 1
+
+            viewbox_width = box.w // 2 + padding // 2
+            viewbox = box.place_box(viewbox_width, h, (0, box.w // 2 - padding // 2 + 1), layer=1)
+            # five boxes between h - 2 and h + 2
+            ypos = lambda t: ilerp(6, h - 8, t)
+
+            # 8 character margin from the left
+            left_margin = 4
+
+            assignment: BaseAssignment = self.get_current_assignment()
+
+            # one box for name
+            name_width, type_width = 45, 30
+            halfsum = (name_width + type_width) // 2
+
+            name = get_field(name_width,
+                             lambda: self.get_current_assignment().set_name(name.text))
+            name_text = assignment.name
+            if len(name_text) >= name_width:
+                name_text = name_text[:name_width - 3 - 2] + '...'
+            try_select(name, name_text)
+
+            viewbox.place(name, (ypos(0), viewbox_width // 2 - halfsum))
+
+            #  todo: support validation for multiline fields
+
+            # one box for assignment type
+            type = get_field(type_width,
+                             lambda: self.get_current_assignment().set_type(type.text))
+            # else:
+            #    assignment.name = type.text
+            try_select(type, assignment.type.capitalize())
+
+            viewbox.place(type, (ypos(0), viewbox_width // 2 + (name_width - halfsum)))
+
+            # one box for description
+
+            hmargin = 1
+            # todo: fix hmargin
+            description_line_width = DESCRIPTION_CHARACTER_LIMIT // 2 - hmargin * 2
+            description = assignment.desc
+
+            if len(description) >= description_line_width:  # + 2 for the beginning spaces
+                description = description[:description_line_width - 3 - 1] + "..."
+            # if len(description) > description_line_width:
+            #    description = " " * hmargin + description[:DESCRIPTION_CHARACTER_LIMIT // 2] + " " * hmargin \
+            #                + " " * hmargin + description[DESCRIPTION_CHARACTER_LIMIT // 2:] + " " * hmargin
+            # else:
+
+            """if len(description) < description_line_width:
+                description = " " * hmargin + description + " " * hmargin
+            else:
+                description_half1 = description[:description_line_width]
+                description = " " * hmargin + description_half1 + " " * hmargin
+
+                description_half2 = assignment.desc[description_line_width:description_line_width * 2]
+                description += "\n" + " " * hmargin + description_half2 + " " * hmargin"""
+
+            desc = get_field(DESCRIPTION_CHARACTER_LIMIT // 2,
+                             lambda: self.get_current_assignment().set_desc(desc.text))
+            try_select(desc, assignment.desc, description)
+
+            viewbox.place(desc, (ypos(0.5), viewbox.w // 2 - DESCRIPTION_CHARACTER_LIMIT // 4))
+
+            # one box for start date
+            date_width = 20
+            DATE_COUNT = 3
+            halfsum = (date_width * DATE_COUNT) // 2
+
+            sdate = get_field(date_width,
+                              lambda: self.get_current_assignment().set_start_date(sdate.valid_get('dt')))
+            try_select(sdate, datetime_to_string(assignment.start_date) if assignment.has_start_date else 'None')
+
+            viewbox.place(sdate, (ypos(1) + 2, viewbox_width // 2 - halfsum))
+            viewbox.place_text("Start Date", (ypos(1) + 1, viewbox_width // 2 - halfsum + 1))
+
+            # one box for due date
+            ddate = get_field(date_width,
+                              lambda: self.get_current_assignment().set_due_date(ddate.valid_get('dt')))
+            try_select(ddate, datetime_to_string(assignment.due_date) if assignment.has_due_date else 'None')
+
+            viewbox.place(ddate, (ypos(1) + 2, viewbox_width // 2 - halfsum + date_width))
+            viewbox.place_text("Due Date", (ypos(1) + 1, viewbox_width // 2 - halfsum + date_width + 1))
+
+            # one box for interval
+            interval = get_field(date_width,
+                                 lambda: self.get_current_assignment().set_interval(interval.valid_get('ts')))
+            try_select(interval, timedelta_to_string(assignment.interval) if assignment.is_persistent else 'None')
+
+            viewbox.place(interval, (ypos(1) + 2, viewbox_width // 2 - halfsum + 2 * date_width))
+            viewbox.place_text("Interval", (ypos(1) + 1, viewbox_width // 2 - halfsum + 2 * date_width + 1))
+
+        if state(MACT) & DELETING:
+            # TODO: find a way to center the warning box
+            assignment: BaseAssignment = self.get_current_assignment()
+
+            assignment_type = assignment.type
+            assignment_name = assignment.name
+
+            confirm_w, confirm_h = 22 + len(assignment_type) + len(assignment_name), 4
+
+            delete_word = "Delete" if state(WIDTH) % 2 != confirm_w % 2 else "Pop"
+
+            confirm = box.place_box(confirm_w, confirm_h, (box.h // 2 - confirm_h // 2, box.w // 2 - confirm_w // 2),
+                                    layer=2)
+            confirm_text = f"{delete_word} the {assignment_type} \"{assignment_name}\"?"
+            confirm.place_hcenter_text(confirm_text, confirm_h // 2)
+
+            instructions = "Yes (Y) | No (N)" if confirm_w % 2 == 0 else "Yes (Y) or No (N)"
+            confirm.place_hcenter_text(instructions, confirm_h // 2 + 1)
+
         box.place_hbar(0)
         box.place_vbar(box.w // 2 - padding // 2, box.w // 2 + padding // 2)
         if len(focused.name) % 2 == 0:
@@ -1235,19 +1647,25 @@ class AssignmentsMenu(Menu):
             "Save & Quit Planner (:qt)", 1)
         BOTTOM_BUTTON_HEIGHT = 5
 
-        y, i = 1, state(MINDEX)
+
+        y, i = 1, state(MIDXA)
         # supporst (description, due date, start date, etc.)
         while y < box.h - BOTTOM_BUTTON_HEIGHT:
-            bu = Box(box.w // 2 - padding // 2 - 2,1)
+            bu = Box(box.w // 2 - padding // 2 - 2, 1)
+            if i < len(in_progress):
+                bu.loadup(in_progress[i])
+                if i == state(MIDXA):
+                    bu.set_border('*')
+
+                    sort_mode = state(ASTKY)
+                    if sort_mode is not structs.UNSORTED:
+                        bu.place_hcenter_text('Sorted by ' + structs.names[sort_mode], bu.true_h - 1)
+
             if i == 0:
                 bu.place_hcenter_text('Unfinished-Assignments', 0)
 
-            if i < len(focused.in_progress):
-                bu.loadup(focused.in_progress[i])
-                if i == state(MINDEX):
-                    bu.set_border('*')
-
             box.place(bu, (y, 1))
+
             i += 1
             y += bu.true_h
 
@@ -1264,20 +1682,20 @@ class AssignmentsMenu(Menu):
 
             bf = box.place_box(box.w // 2 - padding // 2 - 2, BOX_HEIGHT - 2, (y, box.w // 2 + padding // 2 + 2))
 
-        BOX_TO_ARROW_RATIO = 4
+        BOX_TO_ARROW_RATIO = 2
         box_width = box.w // 2 - padding // 2 - 2
         if not TRIGGER_COMMANDS['hdnv']:
             arrows = box.place_box(box_width, BOTTOM_BUTTON_HEIGHT, (box.h - BOTTOM_BUTTON_HEIGHT, 1))
             arrows.place_hcenter_text("Navigate", 0)
 
-            select = arrows.place_box(box_width // BOX_TO_ARROW_RATIO, BOTTOM_BUTTON_HEIGHT - 2,
+            select = arrows.place_box(box_width // BOX_TO_ARROW_RATIO - 1, BOTTOM_BUTTON_HEIGHT - 2,
                                       (1, 1))
-                                       # arrows.w - 3 * box_width // BOX_TO_ARROW_RATIO - box_width // 2 // BOX_TO_ARROW_RATIO - 1))
+            # arrows.w - 3 * box_width // BOX_TO_ARROW_RATIO - box_width // 2 // BOX_TO_ARROW_RATIO - 1))
             select.place_center_text('Choose (X)')
 
-
-            sort_mode = arrows.place_box(box_width // BOX_TO_ARROW_RATIO, BOTTOM_BUTTON_HEIGHT - 2,
-                                      (1, box_width - box_width // BOX_TO_ARROW_RATIO))
+            sort_mode = arrows.place_box(box_width // BOX_TO_ARROW_RATIO - 1, BOTTOM_BUTTON_HEIGHT - 2,
+                                         (1, box_width - box_width // BOX_TO_ARROW_RATIO + 1))
+            sort_mode.place_center_text("Sort (S)")
             # select.
 
             #    ("(<)" + '-' * (box_width - 10) + "(>)\n") +
@@ -1295,30 +1713,109 @@ class AssignmentsMenu(Menu):
             select.place_hcenter_text('Through', ceil(select.h // 2) + 2)
 
         return box
+
     def get_map(self):
         def edit_assignment(index: int):
             assignment = get_focused_group().in_progress[index]  # TODO: support completed
             FUNCTIONS[ADAED](assignment)
 
         def remove_assignment():
-            group = get_focused_group()
-            index = state(MINDEX)
-            group.remove_assignment_at(index)
-            if index == group.in_progress_count:
-                state(MINDEX, state(MINDEX) - 1)
+            state(MACT, state(MACT) | DELETING)
+
+            # change action state
+
+        def confirm_delete():
+            if state(MACT) & DELETING:
+                state(MACT, state(MACT) ^ DELETING)
+                group = get_focused_group()
+                index = group.in_progress.index(self.get_current_assignment())
+                group.remove_assignment_at(index)
+                if index == group.in_progress_count:
+                    state(MIDXA, state(MIDXA) - 1)
+
+        def reset_delete():
+            if state(MACT) & DELETING:
+                state(MACT, state(
+                    MACT) ^ DELETING)  # removes deleting instead of setting to normal (may be viewing or doing something else)
+
+        def on_down():
+            if is_state(MIDXB, UNUSED_MIDX_START):
+                next_idx = min(len(get_focused_group().in_progress) - 1, state(MIDXA) + 1)
+                state(MIDXA, next_idx)
+            else:
+                state(MIDXB, min(state(MIDXB) + 1, VIEW_PROPERTY_COUNT - 1))
+
+        def on_up():
+            if is_state(MIDXB, UNUSED_MIDX_START):
+                next_idx = max(0, state(MIDXA) - 1)
+                state(MIDXA, next_idx)
+            else:
+                state(MIDXB, max(state(MIDXB) - 1, UNUSED_MIDX_START))
+
+        def on_right():
+            if state(MIDXB) < 0 and (state(MACT) & VIEWING):
+                state(MIDXB, 0)
+
+        def on_v():
+            state(MACT, state(MACT) | VIEWING if not state(MACT) & VIEWING else state(MACT) ^ VIEWING)
+            if ~state(MACT) & VIEWING:
+                state(MIDXB, UNUSED_MIDX_START)
+
+        def on_spacebar():
+            if is_state(MIDXB, UNUSED_MIDX_START):
+                on_v()
+            else:
+               on_any_key(SPACEBAR)
+
+        def on_any_key(key):
+            if not (state(MACT) | VIEWING):
+                return None
+            if not is_state(MIDXB, UNUSED_MIDX_START) and (state(MACT) | VIEWING):
+                if key not in [BACKSPACE, SPACEBAR]:
+                    if is_key_special(key) or key == b'v':
+                        return None
+                field = self._field_cache[state(MIDXB)]
+                get_field(field)  #, on_delete=lambda: ignore_margin or on_change_callback, on_type=on_change_callback)
+                self._field_callbacks[state(MIDXB)]()
+                return 1
+            # returns None
+
+        def on_x():
+            state(MSIDE, MSIDE_LEFT if not is_state(MSIDE, MSIDE_LEFT) else MSIDE_UNDECIDED)
+
+        def on_s():
+            state(ASTKY, (state(ASTKY) + 1) % structs.SORT_COUNT)
 
         return InputMap(
             {  # inputs (covered by getch)
-                b'x': lambda: state(MSIDE, MSIDE_LEFT if not is_state(MSIDE, MSIDE_LEFT) else MSIDE_UNDECIDED),
+                ANY_KEY: on_any_key,
+                b's': on_s,
+                b'x': on_x,
                 b'l': lambda: state(MSIDE, MSIDE_RIGHT if not is_state(MSIDE, MSIDE_RIGHT) else MSIDE_UNDECIDED),
                 b'g': lambda: trigger(POP) or trigger(REFRS),
-                DOWN: lambda: state(MINDEX,
-                                  min(len(get_focused_group().in_progress) - 1,
-                                      state(MINDEX) + 1)), # if not is_state(MSIDE, MSIDE_UNDECIDED) else MINDEX),
-                UP: lambda: state(MINDEX, max(MINDEX_START, state(MINDEX) - 1)), # if not is_state(MSIDE,
-                SPACEBAR: lambda: edit_assignment(state(MINDEX)),                                         # MSIDE_UNDECIDED) else MINDEX),
-                b'c': lambda: FUNCTIONS[ADA](),
-                BACKSPACE: remove_assignment
+                DOWN: on_down,  # if not is_state(MSIDE, MSIDE_UNDECIDED) else MIDXA),
+                UP: on_up,  # if not is_state(MSIDE,,  # MSIDE_UNDECIDED) else MIDXA),
+                b'c': lambda: FUNCTIONS[ADA]() or reset_menu_selection(),
+                BACKSPACE: remove_assignment, b'y': confirm_delete, b'n': reset_delete,
+                b'v': on_v,  # todo: show this specific key control somewhere (i.e. (V)iew More)
+                SPACEBAR: on_v,
+                RIGHT: on_right,
+                #    b'e': conditions_menu,
+                #    b's': scheduler_menu,
+            },
+            {  # commands (inputted manually)
+                #    'qt': quit_menu,
+                #    'cl': clear_all_data,
+            }, any_key_pre=True)
+
+
+class QuitMenu(Menu):
+    def get_map(self):
+        return InputMap(
+            {  # inputs (covered by getch)
+                b'y': lambda: quit(0),
+                b'n': lambda: trigger(POP) or trigger(REFRS)
+                #    b'a': actions_menu,
                 #    b'e': conditions_menu,
                 #    b's': scheduler_menu,
             },
@@ -1327,23 +1824,9 @@ class AssignmentsMenu(Menu):
                 #    'cl': clear_all_data,
             })
 
-
-class QuitMenu(Menu):
-    def get_map(self):
-        return InputMap(
-        {  # inputs (covered by getch)
-            b'y': lambda: quit(0),
-            b'n': lambda: trigger(POP) or trigger(REFRS)
-            #    b'a': actions_menu,
-            #    b'e': conditions_menu,
-            #    b's': scheduler_menu,
-        },
-        {  # commands (inputted manually)
-            #    'qt': quit_menu,
-            #    'cl': clear_all_data,
-        })
     def __init__(self):
         super().__init__()
+
     def show(self):
         super().show()
 
@@ -1362,15 +1845,18 @@ def has_focused_group() -> bool:
         return False
     return True
 
+
 def get_focused_group() -> Group:
     return groups[state(FGRPS)][state(FGRP)]
 
 
 BUTTON_COLUMN, FIELD_COLUMN = 1, 2
+
+
 class AssignmentEditor(Menu):
     def on_space(self):
-        if is_state(MSIDE, FIELD_COLUMN) and state(MINDEX) < len(self.caption_fields):
-            midx = state(MINDEX)
+        if is_state(MSIDE, FIELD_COLUMN) and state(MIDXA) < len(self.caption_fields):
+            midx = state(MIDXA)
             field = self.caption_fields[midx]
             get_field(field)
             if field.validate(self.field_types[midx]):
@@ -1412,9 +1898,8 @@ class AssignmentEditor(Menu):
 
         super().show()
 
-
     def on_enter(self):
-        if is_state(MINDEX, len(self.captions)):  # indicates create new assignment button
+        if is_state(MIDXA, len(self.captions)):  # indicates create new assignment button
             assignment_params = ["", "", None, None, None, ""]
             # name, description, start_date, due_date, increment, type
             for i, field in enumerate(self.caption_fields):
@@ -1423,46 +1908,46 @@ class AssignmentEditor(Menu):
             get_focused_group().add_assignment(BaseAssignment(*assignment_params))
             poprefrs()
         elif is_state(MSIDE, BUTTON_COLUMN):
-            if self.enabled[state(MINDEX)] is not None:
-                self.enabled[state(MINDEX)] = not self.enabled[state(MINDEX)]
+            if self.enabled[state(MIDXA)] is not None:
+                self.enabled[state(MIDXA)] = not self.enabled[state(MIDXA)]
 
     def find_index(self, delta: int):
         d = delta // abs(delta)
-        i = state(MINDEX)
+        i = state(MIDXA)
         if not is_state(MSIDE, MSIDE_UNDECIDED):
             check = False if is_state(MSIDE, FIELD_COLUMN) else None
             while True:
                 i += d
                 if 0 <= i <= len(self.enabled):
                     if i == len(self.enabled) or self.enabled[i] is not check:
-                        state(MINDEX, i)
+                        state(MIDXA, i)
                         break
                 else:
                     break
 
     def switch_sides(self, side: int):
-        if 0 > state(MINDEX) or state(MINDEX) >= len(self.captions):
+        if 0 > state(MIDXA) or state(MIDXA) >= len(self.captions):
             return
         state(MSIDE, side)
         if not is_state(MSIDE, MSIDE_UNDECIDED):
             check = None if is_state(MSIDE, BUTTON_COLUMN) else False
-            if self.enabled[state(MINDEX)] is check:
-                i = state(MINDEX)  # we default to the top button
+            if self.enabled[state(MIDXA)] is check:
+                i = state(MIDXA)  # we default to the top button
                 for n in range(1, len(self.enabled)):
                     if 0 <= i + n < len(self.enabled):
                         if self.enabled[i + n] is not check:
-                            state(MINDEX, i + n)
+                            state(MIDXA, i + n)
                             return
 
                     if 0 <= i - n < len(self.enabled):
                         if self.enabled[i - n] is not check:
-                            state(MINDEX, i - n)
+                            state(MIDXA, i - n)
                             return
 
     def on_any_key(self, key):
-        if is_state(MSIDE, FIELD_COLUMN) and state(MINDEX) < len(self.caption_fields):
+        if is_state(MSIDE, FIELD_COLUMN) and state(MIDXA) < len(self.caption_fields):
             if key != ENTER:
-                field = self.caption_fields[state(MINDEX)]
+                field = self.caption_fields[state(MIDXA)]
                 field.front_carat()
                 if key != BACKSPACE:
                     field.type(key)
@@ -1471,13 +1956,13 @@ class AssignmentEditor(Menu):
             self.on_space()
 
     def on_ctrl_c(self):
-        if is_state(MSIDE, FIELD_COLUMN) and state(MINDEX) < len(self.caption_fields):
+        if is_state(MSIDE, FIELD_COLUMN) and state(MIDXA) < len(self.caption_fields):
             global clipboard
-            clipboard = self.caption_fields[state(MINDEX)].text
+            clipboard = self.caption_fields[state(MIDXA)].text
 
     def on_ctrl_v(self):
-        if is_state(MSIDE, FIELD_COLUMN) and state(MINDEX) < len(self.caption_fields):
-            self.caption_fields[state(MINDEX)].type(clipboard)
+        if is_state(MSIDE, FIELD_COLUMN) and state(MIDXA) < len(self.caption_fields):
+            self.caption_fields[state(MIDXA)].type(clipboard)
 
     def get_map(self):
         def default_to_field_column():
@@ -1485,10 +1970,13 @@ class AssignmentEditor(Menu):
                 state(MSIDE, FIELD_COLUMN)
                 return False
             return True
+
         return InputMap({
             ANY_KEY: self.on_any_key,
-            UP: lambda: default_to_field_column() and self.find_index(-1),  # state(MINDEX, clamp(state(MINDEX) - 1, 0, len(captions) - 1)),
-            DOWN: lambda: default_to_field_column() and self.find_index(1),  # state(MINDEX, clamp(state(MINDEX) + 1, 0, len(captions) - 1)),
+            UP: lambda: default_to_field_column() and self.find_index(-1),
+            # state(MIDXA, clamp(state(MIDXA) - 1, 0, len(captions) - 1)),
+            DOWN: lambda: default_to_field_column() and self.find_index(1),
+            # state(MIDXA, clamp(state(MIDXA) + 1, 0, len(captions) - 1)),
             RIGHT: lambda: self.switch_sides(FIELD_COLUMN),
             LEFT: lambda: self.switch_sides(BUTTON_COLUMN),
             COPY: self.on_ctrl_c,
@@ -1496,6 +1984,7 @@ class AssignmentEditor(Menu):
             ENTER: self.on_enter,
             SPACEBAR: self.on_space
         }, {})
+
     def __init__(self):
         super().__init__()
         self.fields: list[InputField] = [
@@ -1539,10 +2028,10 @@ class AssignmentEditor(Menu):
                 active = bx.place_box(box_length, 1, ((i + 1) * BOX_HEIGHT - 1, 1 + margin_x))
                 if self.enabled[i]:
                     active.place_center_text('X')
-                if is_state(MSIDE, BUTTON_COLUMN) and is_state(MINDEX, i):
+                if is_state(MSIDE, BUTTON_COLUMN) and is_state(MIDXA, i):
                     active.set_border('*')
-            elif is_state(MSIDE, BUTTON_COLUMN) and is_state(MINDEX, i):
-                state(MINDEX, state(MINDEX) + 1)  # +=1 until reach one that has a trigger
+            elif is_state(MSIDE, BUTTON_COLUMN) and is_state(MIDXA, i):
+                state(MIDXA, state(MIDXA) + 1)  # +=1 until reach one that has a trigger
 
             name = caption + ": "
             bx.place_text(name, ((i + 1) * BOX_HEIGHT, 1 + OBJECT_SPACEOUT))
@@ -1553,23 +2042,24 @@ class AssignmentEditor(Menu):
 
             field.set_border_default()
             if is_state(MSIDE, FIELD_COLUMN):
-                if i == state(MINDEX):
+                if i == state(MIDXA):
                     if self.enabled[i] or self.enabled[i] is None:
                         field.set_border('*')
                     else:
-                        state(MINDEX, state(MINDEX) - 1)
+                        state(MIDXA, state(MIDXA) - 1)
         # Enter Button
         enter_w = w // 3
         enter_h = 1
         enter_center_y = 1  # from the bottom of the screen
-        enter = bx.place_box(enter_w, 1, (h - 1 + enter_h - 2 - enter_center_y, enter_w)) # + 2 for borders
+        enter = bx.place_box(enter_w, 1, (h - 1 + enter_h - 2 - enter_center_y, enter_w))  # + 2 for borders
         enter.place_center_text("Create New Assignment");
-        if is_state(MINDEX, len(self.captions)): # goes over
+        if is_state(MIDXA, len(self.captions)):  # goes over
             enter.set_border('*')
         return bx
 
 
 commands = ('cl', 'qt')
+
 
 def run(output: bool, *cmdss: list[str]):
     for cmds in cmdss:
@@ -1677,7 +2167,6 @@ TRIGGER_COMMANDS = {
 }
 
 
-
 def trigger(s: str, val: bool = None):
     if val is not None:
         TRIGGER_COMMANDS[s] = val
@@ -1688,9 +2177,11 @@ def trigger(s: str, val: bool = None):
 def is_trigger(s: str):
     return TRIGGER_COMMANDS[s]
 
+
 def poprefrs():
     trigger(POP)
     trigger(REFRS)
+
 
 def lit():
     if not InputField.FIELD:
@@ -1699,26 +2190,34 @@ def lit():
         input('\'' + InputField.FIELD.text + '\'')
 
 
-MSIDE = 'mside'
-MINDEX = 'midx'
-WIDTH = 'width'
-LNGTH = 'lngth'
-FGRP = 'fgrp'
-FGRPS = 'fgrps'
-
+MSIDE = 'mside'  # the side of the menu (left, right, middle, etc.)
+MIDXA = 'midxa'  # the 1st index of the menu for the current side (used for lists)
+MIDXB = 'midxb'  # the 2nd index of the menu for the current side (used for lists)
+WIDTH = 'width'  # the current width of the screen
+LNGTH = 'lngth'  # the current height (or length) of the screen
+FGRP = 'fgrp'  # the index of the focused group for active or inactive
+FGRPS = 'fgrps'  # the type of focused group (active or inactive)
 NO_FOCUSED_GROUP = -1
 ACTIVE_GROUPS, INACTIVE_GROUPS = range(2)
+MACT = 'mact'  # bit field representing the action state of the current menu (deleting, viewing, etc.).
+NO_ACTION = 0
+VGEND = 'vgend'  # the gender of the tts voice
+ASTKY = 'astky'  # the key used to sort assignments
 
 STATE_COMMANDS = {
     MSIDE: 0,  # menu side (-1: left, 0: unselected, 1: right)
-    MINDEX: 0,  # menu index (0: first tab, n: (n + 1)th tab)
+    MIDXA: 0,  # menu index (0: first tab, n: (n + 1)th tab)
+    MIDXB: 0,  # second menu index (0: first tab, n: (n + 1)th tab)
     WIDTH: 0,
     LNGTH: 0,
     FGRP: NO_FOCUSED_GROUP,
-    FGRPS: ACTIVE_GROUPS
+    FGRPS: ACTIVE_GROUPS,
+    MACT: 0,
+    VGEND: 0,  # 0 for male, 1 for female
+    ASTKY: structs.UNSORTED,  # keys can be found in structs.py
 }
 
-
+RMENU = 'rmenu'
 GROUP = 'group'
 group_menu = GroupsMenu()
 ASSGN = 'assgn'
@@ -1734,10 +2233,12 @@ TRIGG = 'trigg'
 ATRIG = 'atrig'
 LIT = 'lit'
 SAVE = 'save'
-RCACH = 'rcach'
+INCRA = 'incra'
+# RCACH = 'rcach'
 FUNCTIONS: dict[str, Callable] = {
-    GROUP: group_menu.show,
-    ASSGN: assignments_menu.show,
+    RMENU: reset_menu_selection,
+    GROUP: lambda: reset_menu_selection() or group_menu.show,
+    ASSGN: lambda: reset_menu_selection() or assignments_menu.reset_cache() or assignments_menu.show(),
     QT: quit_menu.show,
     FQT: lambda: quit(0),
     OUTPT: input,
@@ -1747,9 +2248,9 @@ FUNCTIONS: dict[str, Callable] = {
     ADAED: lambda a: reset_menu_selection() or assignment_editor.show(a),
     LIT: lit,
     SAVE: savedata.save_all,
-    RCACH: alerts.clear_cache
+    INCRA: structs.increment_all_persistent,
+    # RCACH: alerts.clear_cache
 }
-
 
 COMMAND_HISTORY = []
 
@@ -1780,7 +2281,6 @@ def ui():
 
 
 reset_menu_selection()
-
 
 """
 What must we do to have an Input Field system?
@@ -1823,7 +2323,6 @@ while True:
 
 """
 
-
 # todo: callback on finish
 # assumption: field is a single line input field
 clipboard = ""
@@ -1833,11 +2332,18 @@ clipboard = ""
 # 'd' - date
 # 't' - time
 # 'dt' - datetime
-def get_field(field: InputField):
+def no_op():
+    pass
+def get_field(field: InputField, **callbacks):
+    on_delete, on_type = callbacks.get("on_delete", no_op), callbacks.get("on_type", no_op)
+
     InputField.FIELD = field
     field.displaying = False
     menu = MENU.menu_display()
     while True:
+        if is_trigger(POP):
+            trigger(POP, False)
+            break
         clear()
         print(menu.bake())
         ch = get_input(block_cmds=True)
@@ -1848,6 +2354,7 @@ def get_field(field: InputField):
             elif ch == BACKSPACE:
                 if len(field.text) > 0:
                     field.delete(1)
+                    on_delete()
                 continue
             elif ch == b'`':
                 cmd = get_input(':')
@@ -1875,7 +2382,7 @@ def get_field(field: InputField):
                 continue
             char = ch.decode('ascii')
             field.type(char)
-            print(ch)
+            on_type()
     return field.text
 
 
@@ -1894,3 +2401,5 @@ class InputFieldTemplateMenu(Menu):
         return bx
 """
 
+if __name__ == "__main__":
+    ui()
