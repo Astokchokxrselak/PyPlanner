@@ -116,27 +116,27 @@ def parse_date(string: str) -> datetime:
 # DATES
 # CONTEXT OF ANNOTATIONS: WHEN USED AS A START/DUE DATE
 #  XXXXXX OR XX(D)XX(D)XX OR XXMXXDXXY (given day of the given month of the given year)
-parse_date("120423")
-parse_date("04-12-12")
-parse_date("11M24D23Y")
-parse_date("03D21Y10M")
+# parse_date("120423")
+# parse_date("04-12-12")
+# parse_date("11M24D23Y")
+# parse_date("03D21Y10M")
 #  XXY(D)XXM (end of the given month of the current year)
-parse_date("23Y04M")
-parse_date("03M06Y")
+# parse_date("23Y04M")
+# parse_date("03M06Y")
 #  XXY(D)XXD (day of the same month in the current year)
-parse_date("12D23Y")
-parse_date("42Y04D")
+# parse_date("12D23Y")
+# parse_date("42Y04D")
 #  XXXX OR XXD(D)XXM OR XX(D)XX OR XXDXXM (given day in the given month in the current year)
-parse_date("0830")
-parse_date("13D/06M")
-parse_date("12M/25D")
-parse_date("04M12D")
+# parse_date("0830")
+# parse_date("13D/06M")
+# parse_date("12M/25D")
+# parse_date("04M12D")
 #  XXY (current day and month of the given year)
-parse_date("23Y")
+# parse_date("23Y")
 #  XXM (current day of the given month of the current year)
-parse_date("12M")
+# parse_date("12M")
 #  XXD (given day of the current month of the current year)
-parse_date("24D")
+# parse_date("24D")
 
 
 def parse_time(string: str) -> datetime:
@@ -192,13 +192,13 @@ def parse_time(string: str) -> datetime:
 
 # TIMES
 #  XX(T)XX OR XXHXXM (hour)
-parse_time('1159')
-parse_time('11H59M')
+# parse_time('1159')
+# parse_time('11H59M')
 #  XXM (minute of the current hour)
-parse_time('59M')
+# parse_time('59M')
 #  XX OR XXH (last minute of the given hour)
-parse_time('11')
-parse_time('11H')
+# parse_time('11')
+# parse_time('11H')
 
 
 # input()
@@ -409,14 +409,14 @@ def parse_datetime(string):
 
 
 # print("1A0A: ", parse_datetime("11M28D23Y10H00M"))
-print("------------------")
-print(parse_datetime("Monday"))
-print(parse_datetime("Monday@1:02PM"))
-print("--------------")
-print("2B0B: ", parse_datetime("11-28-23/10:00"))
-print(parse_datetime("11-28-23-10-00"))
-print(parse_datetime("T1159"))
-print(parse_datetime("D1230"))
+# print("------------------")
+# print(parse_datetime("Monday"))
+# print(parse_datetime("Monday@1:02PM"))
+# print("--------------")
+# print("2B0B: ", parse_datetime("11-28-23/10:00"))
+# print(parse_datetime("11-28-23-10-00"))
+# print(parse_datetime("T1159"))
+# print(parse_datetime("D1230"))
 
 
 # if datetime begins with A, followed by a string of numbers and a character in the set {D, S}
@@ -956,7 +956,7 @@ class Box:
             layer.bake()
         return self
 
-    def loadup(self, object: Union['Group', 'BaseAssignment'], pn: tuple = (1, 2), pd: tuple = (2, 2), **misc):
+    def loadup(self, object: Union['Group', 'BaseAssignment', ], pn: tuple = (1, 2), pd: tuple = (2, 2), **misc):
         index = clamp(misc.get(LAYER_INDEX_KEY, self.default_layer), -self.layer_count, self.layer_count - 1)
         layer = self.get_layer(index)
 
@@ -1051,8 +1051,11 @@ class InputField(Layer):
         self.text = self.text[:pos] + (char if isinstance(char, str) else char.decode('ascii')) + self.text[pos:]
         self.shift_carat(len(char))  # move the carat forward
 
+    def margin(self):
+        return 0 if self.marginx < 0 else self.marginx
+
     def delete(self, del_count: int):
-        self.text = self.text[:max(self.marginx, self.carat - del_count)] + self.text[self.carat:]
+        self.text = self.text[:max(self.margin(), self.carat - del_count)] + self.text[self.carat:]
         self.shift_carat(-del_count)
 
     def clear(self):
@@ -1066,7 +1069,7 @@ class InputField(Layer):
         self.shift_carat(-len(self.text))
 
     def shift_carat(self, shift_amount: int):
-        self.carat = clamp(self.carat + shift_amount, self.marginx, len(self.text))
+        self.carat = clamp(self.carat + shift_amount, self.margin(), len(self.text))
 
     def get(self, vtype: [str, type]):
         v = self.text
@@ -2201,7 +2204,8 @@ NO_FOCUSED_GROUP = -1
 ACTIVE_GROUPS, INACTIVE_GROUPS = range(2)
 MACT = 'mact'  # bit field representing the action state of the current menu (deleting, viewing, etc.).
 NO_ACTION = 0
-VGEND = 'vgend'  # the gender of the tts voice
+VALRT = 'valrt'  # the gender of the tts voice for normal alerts
+VRALR = 'vralr'  # the gender of the tts voice for random alerts
 ASTKY = 'astky'  # the key used to sort assignments
 
 STATE_COMMANDS = {
@@ -2213,8 +2217,9 @@ STATE_COMMANDS = {
     FGRP: NO_FOCUSED_GROUP,
     FGRPS: ACTIVE_GROUPS,
     MACT: 0,
-    VGEND: 0,  # 0 for male, 1 for female
-    ASTKY: structs.UNSORTED,  # keys can be found in structs.py
+    VRALR: 1,  # 0 for male, 1 for female
+    VALRT: 0,  # the gender of the tts voice for normal alerts
+    ASTKY: structs.UNSORTED  # keys can be found in structs.py
 }
 
 RMENU = 'rmenu'
@@ -2238,7 +2243,7 @@ INCRA = 'incra'
 FUNCTIONS: dict[str, Callable] = {
     RMENU: reset_menu_selection,
     GROUP: lambda: reset_menu_selection() or group_menu.show,
-    ASSGN: lambda: reset_menu_selection() or assignments_menu.reset_cache() or assignments_menu.show(),
+    ASSGN: lambda: reset_menu_selection() or assignments_menu.show(),
     QT: quit_menu.show,
     FQT: lambda: quit(0),
     OUTPT: input,
@@ -2323,8 +2328,6 @@ while True:
 
 """
 
-# todo: callback on finish
-# assumption: field is a single line input field
 clipboard = ""
 
 
@@ -2334,6 +2337,9 @@ clipboard = ""
 # 'dt' - datetime
 def no_op():
     pass
+
+# todo: callback on finish
+# assumption: field is a single line input field
 def get_field(field: InputField, **callbacks):
     on_delete, on_type = callbacks.get("on_delete", no_op), callbacks.get("on_type", no_op)
 
@@ -2401,5 +2407,12 @@ class InputFieldTemplateMenu(Menu):
         return bx
 """
 
+# Action Menu:
+#  At the far left side, the action options
+#  At the right side, group and assignment selection options
+
 if __name__ == "__main__":
     ui()
+
+# WORK ON PRIORITY TYPES!
+# be able to add priority types

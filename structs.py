@@ -2,6 +2,33 @@ from datetime import datetime, timedelta
 from typing import Callable
 
 
+# MultipleProperty
+    # get()
+    # next()
+    # getMode()
+    # getList()
+    # add()
+    # setMode()
+    # getIndex()
+
+# list of advanced properties to add to assignments:
+    # multiple intervals
+    # interval modes
+    # multiple due dates
+    # due date modes
+    # multiple start dates
+    # start date modes
+    # messages on alert due
+    # messages on alert start
+    # message alert on due modes
+    # message alert on start modes
+    # random alert priority index
+    # multiple descriptions
+    # description modes
+    # when to minimize all tabs
+
+
+
 class BaseAssignment:
     def __init__(self, name: str, description: str = "", start_date: datetime = None, due_date: datetime = None,
                  interval: timedelta = None, type: str = None):
@@ -94,6 +121,15 @@ class BaseAssignment:
         else:
             return self.due_date or self.start_date
 
+    def current(self):
+        if self.has_start_date:
+            if self.has_due_date:
+                return self.start_date < datetime.now() < self.due_date
+            return self.start_date < datetime.now()
+        elif self.has_due_date:
+            return datetime.now() < self.start_date
+        return False
+
 # Sorting Modes
 names = ["Dont Sort", "By Name", "By Due Date", "By Start Date", "By Closest Date"]
 UNSORTED = 0
@@ -108,8 +144,21 @@ class Group:
         self.desc = description or ""
         self.conds = conditions
 
-        self.in_progress = []
+        self.in_progress: list[BaseAssignment] = []
         self.completed = []
+
+    def get_current_assignments(self) -> list[BaseAssignment]:
+        current = []
+        for assignment in self.in_progress:
+            if assignment.current():
+                current.append(assignment)
+        return current
+
+    def any_current_assignments(self):
+        for assignment in self.in_progress:
+            if assignment.current():
+                return True
+        return False
 
     @property
     def in_progress_count(self):
@@ -126,7 +175,7 @@ class Group:
         for a in self.in_progress:
             assignment: BaseAssignment = a
             candidate = assignment.closer_date
-            if not closest or candidate < closest:
+            if candidate > datetime.now() and (not closest or candidate < closest):
                 closest = candidate
         return closest
 
@@ -137,7 +186,7 @@ class Group:
             if not assignment.has_start_date:
                 continue
             candidate = assignment.start_date
-            if not closest or candidate > closest:
+            if candidate > datetime.now() and (not closest or candidate < closest):
                 closest = candidate
         return closest
 
@@ -148,7 +197,7 @@ class Group:
             if not assignment.has_due_date:
                 continue
             candidate = assignment.due_date
-            if not closest or candidate > closest:
+            if candidate > datetime.now() and (not closest or candidate < closest):
                 closest = candidate
         return closest
 
@@ -196,3 +245,4 @@ def increment_all_persistent():
             assignment: BaseAssignment = a
             if assignment.is_persistent:
                 assignment.invoke_persistence()
+
