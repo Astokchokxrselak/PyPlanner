@@ -20,6 +20,7 @@ Assignments are saved in a JSON format to be easily readable and editable in any
 TODO: live resaving and reloading of saved plans
 
 """
+FILE_NAME = "personal_plan.json"
 
 
 statedata = {
@@ -28,7 +29,7 @@ statedata = {
 
 if not os.path.exists("plans"):
     os.mkdir("plans")
-with open("plans/plan1.json", 'a+') as js:
+with open("plans/" + FILE_NAME, 'a+') as js:
     js.seek(0)
     jsons = js.read(-1)
     if not jsons:
@@ -50,7 +51,7 @@ def save_assignment(assignment: structs.BaseAssignment, group: Union[structs.Gro
     statedata["groups"].setdefault(gname, {})
     statedata["groups"][gname][assignment.name] = assignment_dict
 
-    with open("plans/plan1.json", 'w+') as jsn:
+    with open("plans/" + FILE_NAME, 'w+') as jsn:
         jsn.write(json.dumps(statedata))
 
 
