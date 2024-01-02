@@ -1,0 +1,51 @@
+{
+  "groups": {
+    "Planner Group": {
+      "Implement the Scheduler": {
+        "description": "Shows the schedule of every assignment in a group in an oragnizd wa"
+      },
+      "Implement the Tracker": {
+        "description": "Tracks temporary changes to assignments and groups"
+      },
+      "Implement undo delete and delete assignment tracking": {
+        "description": "Track which assignments are deleted, recover them at a button press"
+      },
+      "Implement Sound Notifications": {
+        "description": "Like from the Unity version. Use playsound module and original SFX."
+      },
+      "Consider allowing things to go offscreen": {
+        "description": "Would allow for better analysis of problems"
+      },
+      "Add repopup": {
+        "description": "Repopup would cause the dialog box to reappear after a delay if it is not closed. This can be done using threads to check if the popup has been terminated."
+      },
+      "Add an accountability system": {
+        "description": "The program will follow up with the user after failing to mark an assignment as done past the due date. \"Did you finish [assignment]?\""
+      },
+      "Add assignment templates": {
+        "description": "Useful for quickly adding Midnight assignments, Homework assignments, etc. Allow for the creation of custom templates in the future but start with premade ones"
+      },
+      "Add a priority management system": {
+        "description": "Assignments with higher priorities will have more frequent random alerts and reminders closer to the due date than assignments of lower priority."
+      },
+      "Implement duplicating of assignments": {
+        "description": "You should implement duplicating of assignments via shortcut or button. Buttons should also be added to the property viewer for the hell of it"
+      },
+      "Implement live reloading": {
+        "description": "Implement live reloading, which checks the JSON plan file currently in use for changes and updates the current groups with the new information (does not remove automatically)"
+      },
+      "Implement mark-as-done": {
+        "description": "Allow for marking assignments as completed, which would pause all alerts and silence them."
+      },
+      "Implement group conditions": {
+        "description": "Group conditions configure when a group is active or inactive. Inactive groups might as well be active groups where all assignments are marked as done--no alerts are triggered for that group, even if it is focused. Maybe it could be added that the group could be enabled manually for special situations."
+      },
+      "Implement center-scrolling": {
+        "description": "Center-scrolling refers to group and assignment menus, where the button controlss are displayed. This would permit the displaying of more shortcuts."
+      },
+      "Further develop random alerts": {
+        "description": "Develp random alerts further. Add a menu, interval options, and select options for specific assignments."
+      }
+    }
+  }
+}
