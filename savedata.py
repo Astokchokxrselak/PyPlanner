@@ -1,5 +1,6 @@
 import json
 
+from structs import MultipleProperty as MP, MultiplePropertyValue as MPV
 import structs
 
 import os
@@ -7,6 +8,10 @@ import os
 from typing import Union
 
 from datetime import datetime, timedelta
+
+#  TODO: support the loading of assignments with multiple property values
+    #  could use an object { "value", "count", "times" }
+
 
 """
 Assignments are saved in a JSON format to be easily readable and editable in any text editor.
@@ -39,6 +44,7 @@ with open("plans/" + FILE_NAME, 'a+') as js:
 
 def save_assignment(assignment: structs.BaseAssignment, group: Union[structs.Group, str]):
     assignment_dict = {}
+    assignment_dict["type"] = assignment.type
     if assignment.has_description:
         assignment_dict["description"] = assignment.desc
     if assignment.has_start_date:
@@ -46,7 +52,7 @@ def save_assignment(assignment: structs.BaseAssignment, group: Union[structs.Gro
     if assignment.has_due_date:
         assignment_dict["duedate"] = datetime_to_dict(assignment.due_date)
     if assignment.is_persistent:
-        assignment_dict["interval"] = timedelta_to_dict(assignment.interval)
+        assignment_dict["interval"] = [timedelta_to_dict(interval) for interval in assignment.interval_mprop().get_list()]
     gname = group.name if isinstance(group, structs.Group) else group
     statedata["groups"].setdefault(gname, {})
     statedata["groups"][gname][assignment.name] = assignment_dict
@@ -77,10 +83,14 @@ def save_all():
 
 
 def dict_to_datetime(d: dict) -> datetime:
+    if not isinstance(d, dict):
+        raise TypeError
     return datetime(d["Y"], d["M"], d["D"], d["h"], d["m"], d["s"])
 
 
 def dict_to_timedelta(d: dict) -> timedelta:
+    if not isinstance(d, dict):
+        raise TypeError
     return timedelta(weeks=d["W"], days=d["D"], hours=d["h"], minutes=d["m"], seconds=d["s"])
 
 
@@ -107,27 +117,33 @@ def load_group(group_name: str, g: dict):
     group = structs.Group(group_name, None, None)
     structs.active_groups().append(group)
     for title, a in g.items():
-        a: dict = a
+        a: dict
 
         description = ""
         if "description" in a:
-            description = a["description"]
+            description = MP(a["description"])
 
         startdate, duedate = None, None
         if "startdate" in a:
-            startdate = dict_to_datetime(a["startdate"])
+            startdate = MP(dict_to_datetime(a["startdate"]))
         if "duedate" in a:
-            duedate = dict_to_datetime(a["duedate"])
+            duedate = MP(dict_to_datetime(a["duedate"]))
 
         increment = None
         if "interval" in a:
-            increment = dict_to_timedelta(a["interval"])
+            increment = MP()
+            try:
+                for dc in a["interval"]:
+                    increment.add(dict_to_timedelta(dc))
+            except TypeError:
+                increment.add(dict_to_timedelta(a["interval"]))
 
-        type = ""
         if "type" in a:
-            type = a["type"]
+            type = MP(a["type"])
+        else:
+            type = MP("")
 
-        assignment = structs.BaseAssignment(title, description, startdate, duedate, increment, type)
+        assignment = structs.BaseAssignment(MP(title), description, startdate, duedate, increment, type)
         group.add_assignment(assignment)
 
 
