@@ -9,7 +9,11 @@
 #       submenus
 #       assignment editing
 
+from dateparsers import *
+
 from typing import Union, Callable, Sequence
+
+NoneOr = lambda t: Union[t, None]
 
 from msvcrt import getch
 
@@ -18,10 +22,13 @@ from datetime import datetime, timedelta
 
 import alerts
 
-from structs import BaseAssignment, Group, active_groups, inactive_groups
+from structs import (BaseAssignment, Group, active_groups, inactive_groups,
+                     MultipleProperty as MP)
 import structs
 
 import savedata
+
+from helpers.string_helpers import limit_width_smart_break
 
 
 def ilerp(i1: int, i2: int, t: float) -> int:
@@ -59,499 +66,8 @@ def sslice_until(string: str, func: Callable):
 # WHEN SYMBOLS ARE ABSENT THE ORDER OF INPUT MUST BE PRESERVED IN THE ORDER SPECIFIED BY THE SYMBOLS
 # WHEN SYMBOLS ARE ABSENT INPUT SEGMENTS [PAIRS OF DIGITS] MUST BE ENTERED AS PAIRS, WITH NUMBERS LESS THAN 10 INCLUDING A LEADING 0
 
-def now(**replacements) -> datetime:
-    replacements.setdefault('second', 0)
-    replacements.setdefault('microsecond', 0)
-    return datetime.now().replace(**replacements)
-
 
 #  Options:
-
-MONTH_MAX = 12
-
-
-def parse_date(string: str) -> datetime:
-    delimiter = ''
-    for ch in string:
-        if not ch.isalnum():
-            delimiter = ch
-            break
-    if delimiter:
-        tokens = string.split(delimiter)
-    else:  # no delimiter => tokens are packed together => divisible by either 2 or 3
-        tokens = []
-        i = 0
-        if len(string) % 3 == 0:
-            if string[2].isalpha():
-                token_size = 3
-            else:
-                token_size = 2
-        elif len(string) % 2 == 0:
-            token_size = 2
-        else:
-            raise ValueError("Parameter is in an invalid format.")
-        while i < len(string):
-            tokens.append(string[i:i + token_size])
-            i += token_size
-        print("DATES: ", tokens)
-
-    start = tokens[0]  # the start must be consistent for the rest of the tokens
-    if len(start) == 2:  # inferred date path
-        if len(tokens) == 2:  # month-day path
-            month, day = int(tokens[0]), int(tokens[1])
-            return now(month=month, day=day)
-        elif len(tokens) == 3:  # year-month-day path
-            month, day, year = map(lambda t: int(t), tokens)
-            print(month)
-            return now(year=2000 + year, month=month, day=day)
-    elif len(start) == 3:  # noninferred date path; symbols are specified
-        datetkns = {'D': now().day, 'Y': now().year - 2000, 'M': now().month}  # day, year, month
-        for token in tokens:
-            if token[-1] in datetkns:
-                tk = token[-1]
-                datetkns[tk] = int(token[:len(token) - 1])
-        return now(year=2000 + datetkns['Y'], month=datetkns['M'], day=datetkns['D'])
-
-
-# DATES
-# CONTEXT OF ANNOTATIONS: WHEN USED AS A START/DUE DATE
-#  XXXXXX OR XX(D)XX(D)XX OR XXMXXDXXY (given day of the given month of the given year)
-# parse_date("120423")
-# parse_date("04-12-12")
-# parse_date("11M24D23Y")
-# parse_date("03D21Y10M")
-#  XXY(D)XXM (end of the given month of the current year)
-# parse_date("23Y04M")
-# parse_date("03M06Y")
-#  XXY(D)XXD (day of the same month in the current year)
-# parse_date("12D23Y")
-# parse_date("42Y04D")
-#  XXXX OR XXD(D)XXM OR XX(D)XX OR XXDXXM (given day in the given month in the current year)
-# parse_date("0830")
-# parse_date("13D/06M")
-# parse_date("12M/25D")
-# parse_date("04M12D")
-#  XXY (current day and month of the given year)
-# parse_date("23Y")
-#  XXM (current day of the given month of the current year)
-# parse_date("12M")
-#  XXD (given day of the current month of the current year)
-# parse_date("24D")
-
-
-def parse_time(string: str) -> datetime:
-    ending_chars = string[len(string) - 2:]
-    is_pm = True  # trigger(PMDEF)
-    if ending_chars.isalpha():
-        is_pm = ending_chars.upper() == 'PM'
-        string = string[:len(string) - 2]
-
-    delimiter = ''
-    hour, minute = now().hour, now().minute
-    for ch in string:
-        if not ch.isalnum():
-            delimiter = ch
-            break
-    if delimiter:
-        tokens = string.split(delimiter)
-    else:  # no delimiter => tokens are packed together => divisible by either 2 or 3
-        tokens = []
-        i = 0
-        if len(string) % 3 == 0:
-            if string[2].isalpha():
-                token_size = 3
-            else:
-                token_size = 2
-        elif len(string) % 2 == 0:
-            token_size = 2
-        else:
-            raise ValueError("Parameter is in an invalid format.")
-        while i < len(string):
-            tokens.append(string[i:i + token_size])
-            i += token_size
-        print("DATES: ", tokens)
-
-    if string.isnumeric() or delimiter:
-        if len(tokens) == 1:
-            hour = int(tokens[0])
-            minute = 59
-        if len(tokens) == 2:  # hour-minute path
-            hour, minute = int(tokens[0]), int(tokens[1])
-    else:  # noninferred time path; symbols are specified
-        timetkns = {'H': now().hour, 'M': 59}  # hour, minute
-        for token in tokens:
-            if token[-1] in timetkns:
-                tk = token[-1]
-                timetkns[tk] = int(token[:len(token) - 1])
-        hour, minute = timetkns['H'], timetkns['M']
-    if is_pm:
-        if hour < 12:  # PM hours
-            hour += 12
-    return now(hour=hour, minute=minute)
-
-
-# TIMES
-#  XX(T)XX OR XXHXXM (hour)
-# parse_time('1159')
-# parse_time('11H59M')
-#  XXM (minute of the current hour)
-# parse_time('59M')
-#  XX OR XXH (last minute of the given hour)
-# parse_time('11')
-# parse_time('11H')
-
-
-# input()
-
-
-# DATETIMES
-# [valid date](D)[valid time](T) (self explanatory)
-# D[valid date] (11:59PM of the given date)
-# T[valid time] (given time of the current day)
-# +[valid timespan] (the current datetime plus the timespan)
-# +[valid timespan]T[valid time] (the current datetime plus the timespan with time T)
-
-def get_datetime(alphstr: str, plus_count: int = 0) -> datetime:
-    current_time = now()
-    options = {
-        "Monday": current_time + timedelta(((-current_time.weekday() - 1) % 7 + 1 + plus_count * 7)),
-        "Tuesday": current_time + timedelta(((-current_time.weekday()) % 7 + 1 + plus_count * 7)),
-        "Wednesday": current_time + timedelta(((-current_time.weekday() + 1) % 7 + 1 + plus_count * 7)),
-        "Thursday": current_time + timedelta(((-current_time.weekday() + 2) % 7 + 1 + plus_count * 7)),
-        "Friday": current_time + timedelta(((-current_time.weekday() + 3) % 7 + 1 + plus_count * 7)),
-        "Saturday": current_time + timedelta(((-current_time.weekday() + 4) % 7 + 1 + plus_count * 7)),
-        "Sunday": current_time + timedelta(((-current_time.weekday() + 5) % 7 + 1 + plus_count * 7)),
-    }
-    return options[alphstr]
-
-
-def parse_datetime(string):
-    if not string:
-        raise ValueError("Parameter is in an invalid format.")
-    string = string.strip(' ')
-
-    # SPECIAL CASES #
-
-    if string == 'N':
-        return now()
-
-    # RELATIVE #
-
-    if string[0] == 'A':
-        sid, i = '', 1
-
-        while i < len(string):
-            if string[i].isnumeric():
-                sid += string[i]
-            else:
-                break
-            i += 1
-        if not sid:
-            input(sid)
-            raise ValueError
-        id = int(sid)
-
-        assignment: BaseAssignment = get_focused_group().in_progress[id]  # TODO: support completed assignments
-        date_type = string[i]  # last char before break
-        relative = None
-        if date_type == 'D':
-            if assignment.has_due_date:
-                relative = assignment.due_date
-        elif date_type == 'S':
-            if assignment.has_start_date:
-                relative = assignment.start_date
-        if not relative:
-            raise ValueError
-
-        i += 1
-        if i >= len(string):
-            return relative
-        elif string[i] != '+':
-            raise ValueError
-
-        i += 1
-        timespan = sslice_until(string[i:], lambda ch: ch != '+')
-        delta = parse_timespan(timespan["string"])
-
-        i = timespan["end"]
-        if string[i] == '@':
-            at_time = parse_time(string[i + 1:])
-            relative.replace(hour=at_time.hour, minute=at_time.minute, second=at_time.second)
-
-        return relative + delta
-
-    # STRING/WEEKDAY #
-
-    i = 0
-    word = ""
-    while i < len(string) and string[i].isalpha():
-        word += string[i]
-        i += 1
-    try:
-        date = get_datetime(word, string.count('+') - string.count('-'))
-        if '@' in string:
-            time = parse_time(string[string.index('@') + 1:])
-            date = date.replace(hour=time.hour, minute=time.minute)
-        return date
-    except KeyError:
-        pass
-
-    # NORMAL CASES #
-
-    leading_char = string[0]  # the leading character will either be a character
-    # or a digit.
-    if not leading_char.isnumeric():
-        if leading_char == 'T':
-            return parse_time(string[1:])
-        if leading_char == 'D':
-            next_char = string[1]
-            if next_char == 'T':
-                return parse_datetime(string[2:])
-            return parse_date(string[1:])
-        if leading_char == '+':
-            spanstr = ""
-            for ch in string[1:]:
-                if ch.isalnum():
-                    spanstr += ch
-                else:
-                    break
-            print("ASPAN", spanstr)
-            date = now() + parse_timespan(spanstr)
-            if '@' in string:  # sets exact time
-                time = parse_time(string[string.index('@') + 1:])
-                date = date.replace(hour=time.hour, minute=time.minute)
-                print("CHANGED DATE: ", time)
-            return date
-
-    delis = set()
-    delimiters = []
-    for ch in string:
-        if not ch.isalnum() and ch not in delis:
-            delimiters.append(ch)
-            delis.add(ch)
-    del delis
-
-    if len(delimiters) == 3:
-        tokens = string.split(delimiters[1])
-        time = parse_time(tokens[1])
-        date = parse_date(tokens[0])
-        datetime = date.replace(hour=time.hour, minute=time.minute)
-        return datetime
-    if len(delimiters) == 1:  # inferred datetime path
-        tokens = string.split(delimiters[0])
-        # inferred datetime path has exactly 5 tokens; MM(D)DD(D)YY(D)HH(D)MM
-        month, day, year, hour, minute = map(lambda t: int(t), tokens)
-        datetime = now(month=month, day=day, year=year, hour=hour, minute=minute)
-        return datetime
-    if len(delimiters) == 0:  # labeled path
-        tokens = []
-        # the inferred path MUST use two digits per token
-
-        iterstring = string
-        if string[len(string) - 2 - 1:].isalpha():
-            iterstring = string[len(string) - 2 - 1:]
-
-        alpha = False
-        for i in iterstring:
-            if i.isalpha():
-                alpha = True
-                break
-
-        if alpha:
-            token = ''
-            for ch in string:
-                token += ch
-                if ch.isalpha():
-                    tokens.append(token)
-                    token = ""
-
-            tkns = {'D': now().day, 'Y': now().year - 2000, 'M': now().month, 'h': now().hour,
-                    'm': now().minute}  # hour, minute
-            month_assigned = False
-            for token in tokens:
-                if token[-1] in tkns:
-                    tk = token[-1]
-                    if tk == 'M':
-                        if not month_assigned:
-                            tkns['M'] = int(token[:len(token) - 1])
-                        else:
-                            tkns['m'] = int(token[:len(token) - 1])  # change to minute
-                        month_assigned = not month_assigned  # alternate
-                    else:
-                        tkns[tk] = int(token[:len(token) - 1])
-        else:
-            # 1130 - 11:30PM today
-            # 113023 - 11:59PM 11/30/23
-            # 1130231130 - 11:30PM 11/30/23
-            # 11302311 - 11:59PM 11/30/23
-            token, i = '', 0
-            while i < len(string):
-                token += string[i]
-                i += 1
-                if i % 2 == 0:
-                    tokens.append(token)
-                    token = ''
-
-            if len(tokens) == 2:
-                return parse_time(string)
-            elif len(tokens) == 3:
-                print(string[:6])
-                print(parse_date(string[:6]))
-                return parse_date(string[:6]).replace(hour=11, minute=59)
-            elif len(tokens) >= 4:
-                date = parse_date(string[:6])  # first three pairs of characters represent date
-                time = parse_time(string[6:])  # last two pairs of characters represent time
-                return date.replace(hour=time.hour, minute=time.minute)
-            else:
-                raise ValueError("Parameter is in an invalid format.")
-
-        return now(day=tkns['D'], year=tkns['Y'] + 2000, month=tkns['M'], hour=tkns['h'], minute=tkns['m'])
-
-
-# print("1A0A: ", parse_datetime("11M28D23Y10H00M"))
-# print("------------------")
-# print(parse_datetime("Monday"))
-# print(parse_datetime("Monday@1:02PM"))
-# print("--------------")
-# print("2B0B: ", parse_datetime("11-28-23/10:00"))
-# print(parse_datetime("11-28-23-10-00"))
-# print(parse_datetime("T1159"))
-# print(parse_datetime("D1230"))
-
-
-# if datetime begins with A, followed by a string of numbers and a character in the set {D, S}
-# then followed by a plus, then a valid timespan, we set the datetime relative to another assignment
-
-def datetime_to_string(date: datetime):
-    return f"{date.year - 2000}Y{date.month}M{date.day}D{date.hour}H{date.minute}M{date.second}S"
-
-
-def timedelta_to_string(td: timedelta):
-    days = td.days
-    weeks = days // 7
-    days = days % 7
-
-    seconds = td.seconds
-    hours = seconds // 3600
-    seconds = seconds % 3600
-
-    minutes = seconds // 60
-    seconds = seconds % 60
-
-    return f"{weeks}W{days}D{hours}h{minutes}m{seconds}s"
-
-
-# input()
-# TIMEDELTA
-#  DDHHMM - day, hour, minute timespan (inferred path)
-# + - next day, same minute
-# +(T) for token T (Y, W, D, M, H, OR m) - next T (T's value + 1)
-# + - next day
-# +++ - in 3 days
-# any number of +'s can be used to separate digits, i.e.
-
-# 11++20 (in 11 days, 2 hours from this current hour, and 20 minutes)
-# limitation: +'s cannot be used for multiple tokens in a row, they must be separated
-
-# +++
-
-# -(T) for token T (Y, W, D, M, H OR m) - last T (T's value - 1)
-# XXYXXMXXWXXDXXHXXM (Year, month, week, day, hour, minute)
-# DT[valid datetime] - difference between current datetime and valid datetime.
-
-
-def parse_timespan(string: str) -> timedelta:
-    string = string.strip()
-    if not string:
-        raise ValueError("Parameter is in an invalid format.")
-    leading_chars = string[:2]
-    if leading_chars == 'DT':
-        # if string[2] != '[' or string[-1] != ']':
-        #     raise ValueError("Parameter is in an invalid format.")
-        datetime = parse_datetime(string[3:len(string)])
-        return datetime - now()
-    else:
-        leading_char = leading_chars[0]
-        if leading_char.isalpha():  # and leading_chars[1] == '[':
-            # if string[-1] != ']':
-            #    raise ValueError("Parameter is in an invalid format.")
-            if leading_char == 'D':
-                datetime = parse_date(string[2:len(string) - 1])
-                return datetime - now()
-            elif leading_char == 'T':
-                datetime = parse_time(string[2:len(string) - 1])
-                return datetime - now()
-    tokens = []
-
-    delimiter = ''
-    alpha = False
-    for i in string:
-        if i.isalpha():
-            alpha = True
-
-    if alpha:
-        token = ''
-        for ch in string:
-            token += ch
-            if ch.isalpha():
-                tokens.append(token)
-                token = ""
-
-        month_assigned = False
-        tkns = {tk: 0 for tk in ('Y', 'W', 'D', 'H', 'm')}
-        for tkn in tokens:
-            tk = tkn[-1]
-            if tk == 'M':
-                if month_assigned:
-                    tkns['M'] = int(tkn[:len(tkn) - 1])
-                else:
-                    tkns['m'] = int(tkn[:len(tkn) - 1])
-                month_assigned = not month_assigned
-            else:
-                tkns[tk] = int(tkn[:len(tkn) - 1])
-        return timedelta(days=tkns['Y'] * 365 + tkns['W'] * 7 + tkns['D'], hours=tkns['H'], minutes=tkns['m'],
-                         seconds=0, microseconds=0)
-    else:
-        i = 0
-        if len(string) == 3:  # another very special inferred case
-            tokens.append(string[0])  # hour
-            tokens.append(string[1:])  # minute
-            return timedelta(hours=int(tokens[0]), minutes=int(tokens[1]))
-        elif len(string) == 5:  # very special inferred case
-            tokens.append(string[0])  # day
-            tokens.append(string[1:3])  # hour
-            tokens.append(string[3:])  # minute
-            return timedelta(days=int(tokens[0]), hours=int(tokens[1]), minutes=int(tokens[2]))
-        while i < len(string):
-            tokens.append(string[i:i + 2])
-            i += 2
-        print(tokens)
-        if len(tokens) == 1:
-            return timedelta(hours=int(tokens[0]))
-        if len(tokens) == 2:
-            return timedelta(hours=int(tokens[0]), minutes=int(tokens[1]))
-        if len(tokens) == 3:  # for three token inferred path,
-            return timedelta(days=int(tokens[0]), hours=int(tokens[1]), minutes=int(tokens[2]))
-        if len(tokens) == 4:
-            return timedelta(weeks=int(tokens[0]), days=int(tokens[1]), hours=int(tokens[2]), minutes=int(tokens[3]))
-
-
-print(parse_datetime("+1D@3H"))
-"""
-print(parse_timespan('DT[1159]'))
-print(parse_timespan('DT[12M1D]'))
-print(parse_timespan('D[11M30D]'))
-print(parse_timespan('T[11H59M]'))
-print(parse_timespan(''))
-"""
-print(parse_timespan('11'))
-print(parse_timespan('1'))
-print(parse_timespan('1120'))
-print(parse_timespan('11030'))
-print(parse_timespan('130'))
-print(parse_timespan('11H'))
-# input()
-
 from math import ceil
 
 import os
@@ -568,12 +84,15 @@ UP = b'\xe0H'
 RIGHT = b'\xe0M'
 DOWN = b'\xe0P'
 LEFT = b'\xe0K'
+DEL = b'\xe0S'
 SPACEBAR = b' '
 ENTER = b'\r'
 COPY = b'\x03'
 PASTE = b'\x16'
 BACKSPACE = b'\x08'
 ANY_KEY = b''
+
+
 def is_key_special(key):
     return key in (SPECIAL, UP, RIGHT, DOWN, LEFT, SPACEBAR, ENTER, COPY, PASTE, BACKSPACE)
 
@@ -718,8 +237,8 @@ class Layer:
         # TODO: find the longest line instead of the first line
         self.texts[(ceil(self.h / 2) - offset_y, self.w // 2 - line_length // 2 + 1)] = text
 
-    def place_vbar(self, x, *xs):
-        self.place_text('|\n' * self.h, (1, x + 1))
+    def place_vbar(self, x, *xs, **kwargs):
+        self.place_text('|\n' * kwargs.get("length", self.h), (1, x + 1))
         for h in xs:
             self.place_vbar(h)
 
@@ -932,7 +451,7 @@ class Box:
 
     def place_vbar(self, x, *xs, **boxargs):
         index = clamp(boxargs.get(LAYER_INDEX_KEY, self.default_layer), -self.layer_count, self.layer_count - 1)
-        self.get_layer(index).place_vbar(x, *xs)
+        self.get_layer(index).place_vbar(x, *xs, **boxargs)
 
     def place_hbar(self, y: int, *ys: int, **boxargs):
         index = clamp(boxargs.get(LAYER_INDEX_KEY, self.default_layer), -self.layer_count, self.layer_count - 1)
@@ -956,7 +475,7 @@ class Box:
             layer.bake()
         return self
 
-    def loadup(self, object: Union['Group', 'BaseAssignment', ], pn: tuple = (1, 2), pd: tuple = (2, 2), **misc):
+    def loadup(self, object: Union['Group', 'BaseAssignment',], pn: tuple = (1, 2), pd: tuple = (2, 2), **misc):
         index = clamp(misc.get(LAYER_INDEX_KEY, self.default_layer), -self.layer_count, self.layer_count - 1)
         layer = self.get_layer(index)
 
@@ -1071,7 +590,7 @@ class InputField(Layer):
     def shift_carat(self, shift_amount: int):
         self.carat = clamp(self.carat + shift_amount, self.margin(), len(self.text))
 
-    def get(self, vtype: [str, type]):
+    def get(self, vtype: [str, type] = "str"):
         v = self.text
 
         if vtype == 'd':
@@ -1080,6 +599,8 @@ class InputField(Layer):
         elif vtype == 't':
             pass
             # v = parse_time_as_time(self.text)
+        elif vtype == 'int' or vtype == 'i':
+            v = int(self.text)
         elif vtype == 'dt':
             if not self.text:
                 v = now()
@@ -1093,7 +614,8 @@ class InputField(Layer):
             else:
                 if not self.text:
                     v = timedelta()
-                v = parse_timespan(self.text)
+                else:
+                    v = parse_timespan(self.text)
         return v
 
     def valid_get(self, vtype: str):
@@ -1128,8 +650,10 @@ class InputField(Layer):
         yi, xi = self.carat_origin
         if not self.displaying:
             container_width = self.w - xi
-            lentex = min(container_width, len(self.text))  #  the amount of characters we are replacing with other characters
-            offset = container_width * (self.carat // container_width)  #  how many field-widths we offset the text by (incase the carat leaves the box)
+            lentex = min(container_width,
+                         len(self.text))  # the amount of characters we are replacing with other characters
+            offset = container_width * (
+                        self.carat // container_width)  # how many field-widths we offset the text by (incase the carat leaves the box)
             if offset != 0:
                 offset -= 1  # leave space for the border?
 
@@ -1208,9 +732,11 @@ UNUSED_MIDX_START = -1
 
 
 def reset_menu_selection():
+    state(MACT, NO_ACTION)
     state(MSIDE, MSIDE_UNDECIDED)
     state(MIDXA, MIDX_START)
     state(MIDXB, UNUSED_MIDX_START)
+
 
 # the planner ui
 # ui width: 48
@@ -1267,7 +793,6 @@ class InputMap:
                     return self.inputs[ANY_KEY](key)
                 except KeyError:
                     return self.run()
-            return self.run()
 
 
 class Menu:
@@ -1281,17 +806,26 @@ class Menu:
         bx = get_box(state(WIDTH), state(LNGTH))
         return bx
 
-    def show(self):
+    def preshow(self):
+        #  Useful for menus that override normal show() behavior
+        #  returns false if should pop
         global MENU
         MENU = self
 
         if is_trigger(POP):
             trigger(POP)
-            return
+            return False
         if self.pop_if():
+            return False
+
+        if is_trigger(INPCL):
+            clear()
+        return True
+
+    def show(self):
+        if not self.preshow():
             return
 
-        clear()
         box = self.menu_display().bake()
         print(box)
 
@@ -1329,7 +863,7 @@ class GroupsMenu(Menu):
                     MIDXA, 0),
                 SPACEBAR: on_space,
                 UP: lambda: state(MIDXA, max(MIDX_START,
-                                              state(MIDXA) - 1) if not is_state(MSIDE, MSIDE_UNDECIDED) else state(
+                                             state(MIDXA) - 1) if not is_state(MSIDE, MSIDE_UNDECIDED) else state(
                     MIDXA)),
                 DOWN: lambda: state(MIDXA,
                                     min(len(active_groups() if is_state(MSIDE, MSIDE_LEFT) else inactive_groups()) - 1,
@@ -1367,7 +901,7 @@ class GroupsMenu(Menu):
         box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
             "Actions", 1, "(A)", 2)
         box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
-            "Clear All", 1, "(:cl)", 2)
+            "Configure", 1, "(Q)", 2)
         box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
             "Scheduler", 1, "(S)", 2)
         box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
@@ -1443,9 +977,10 @@ DELETING = 1 << 0
 VIEWING = 1 << 1
 EDITING = 1 << 2
 
-
 VIEW_PROPERTY_COUNT = 6
 DESCRIPTION_CHARACTER_LIMIT = 150
+
+
 class AssignmentsMenu(Menu):
     def get_current_assignment(self) -> BaseAssignment:
         return get_focused_group().in_progress_sorted(state(ASTKY))[state(MIDXA)]
@@ -1490,7 +1025,7 @@ class AssignmentsMenu(Menu):
                     return field
                 return self._field_cache[index]
 
-            def try_select(field: InputField, text: str="", displayed_text: Union[str, None]=None):
+            def try_select(field: InputField, text: str = "", displayed_text: Union[str, None] = None):
                 nonlocal index
 
                 field.back_carat()
@@ -1597,7 +1132,11 @@ class AssignmentsMenu(Menu):
             try_select(interval, timedelta_to_string(assignment.interval) if assignment.is_persistent else 'None')
 
             viewbox.place(interval, (ypos(1) + 2, viewbox_width // 2 - halfsum + 2 * date_width))
-            viewbox.place_text("Interval", (ypos(1) + 1, viewbox_width // 2 - halfsum + 2 * date_width + 1))
+
+            caption = "Interval"
+            if not assignment.interval_mprop().simple:
+                caption += " (" + str(assignment.interval_mprop().get_index() + 1) + ")"
+            viewbox.place_text(caption, (ypos(1) + 1, viewbox_width // 2 - halfsum + 2 * date_width + 1))
 
         if state(MACT) & DELETING:
             # TODO: find a way to center the warning box
@@ -1641,7 +1180,7 @@ class AssignmentsMenu(Menu):
             "Actions (A)", 1)
 
         box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
-            "Clear All (:cl)", 1)
+            "Configure (Q)", 1)
         box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
             "Scheduler (S)", 1)
         box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
@@ -1649,7 +1188,6 @@ class AssignmentsMenu(Menu):
         box.place_box(padding - 5, button_h, (BUTTON_Y_POSITION(), box.w // 2 - (padding - 5) // 2)).place_hcenter_text(
             "Save & Quit Planner (:qt)", 1)
         BOTTOM_BUTTON_HEIGHT = 5
-
 
         y, i = 1, state(MIDXA)
         # supporst (description, due date, start date, etc.)
@@ -1768,17 +1306,18 @@ class AssignmentsMenu(Menu):
             if is_state(MIDXB, UNUSED_MIDX_START):
                 on_v()
             else:
-               on_any_key(SPACEBAR)
+                on_any_key(SPACEBAR)
 
         def on_any_key(key):
-            if not (state(MACT) | VIEWING):
+            if not (state(MACT) | VIEWING) \
+                    or key in (b'=', b'-'):
                 return None
             if not is_state(MIDXB, UNUSED_MIDX_START) and (state(MACT) | VIEWING):
                 if key not in [BACKSPACE, SPACEBAR]:
                     if is_key_special(key) or key == b'v':
                         return None
                 field = self._field_cache[state(MIDXB)]
-                get_field(field)  #, on_delete=lambda: ignore_margin or on_change_callback, on_type=on_change_callback)
+                get_field(field)  # , on_delete=lambda: ignore_margin or on_change_callback, on_type=on_change_callback)
                 self._field_callbacks[state(MIDXB)]()
                 return 1
             # returns None
@@ -1789,9 +1328,22 @@ class AssignmentsMenu(Menu):
         def on_s():
             state(ASTKY, (state(ASTKY) + 1) % structs.SORT_COUNT)
 
+        def on_plus():
+            if state(MACT) & VIEWING:
+                if not is_state(MIDXB, UNUSED_MIDX_START):
+                    if state(MIDXB) == 5:
+                        self.get_current_assignment().interval_mprop().next()
+
+        def on_minus():
+            if state(MACT) & VIEWING:
+                if not is_state(MIDXB, UNUSED_MIDX_START):
+                    if state(MIDXB) == 5:
+                        self.get_current_assignment().interval_mprop().prev()
+
         return InputMap(
             {  # inputs (covered by getch)
                 ANY_KEY: on_any_key,
+                b'q': lambda: FUNCTIONS[CNFGA](),
                 b's': on_s,
                 b'x': on_x,
                 b'l': lambda: state(MSIDE, MSIDE_RIGHT if not is_state(MSIDE, MSIDE_RIGHT) else MSIDE_UNDECIDED),
@@ -1803,6 +1355,8 @@ class AssignmentsMenu(Menu):
                 b'v': on_v,  # todo: show this specific key control somewhere (i.e. (V)iew More)
                 SPACEBAR: on_v,
                 RIGHT: on_right,
+                b'=': on_plus,
+                b'-': on_minus
                 #    b'e': conditions_menu,
                 #    b's': scheduler_menu,
             },
@@ -1837,7 +1391,8 @@ class QuitMenu(Menu):
         w, h = state(WIDTH), state(LNGTH)
         box = get_box(w, h)
         box.set_border('*')
-        bx = box.place_box(w // 2, h // 3, (h // 3, state(WIDTH) // 4)).set_border('*')
+        bx = box.place_box(w // 2, h // 3, (h // 3, state(WIDTH) // 4))
+        bx.set_border('*')
         bx.place_hcenter_text("Are you sure you want to quit?", bx.h // 2 - 1, "Quit (Y)", bx.h // 2, "Return (N)",
                               bx.h // 2 + 1)
         return box
@@ -1850,69 +1405,89 @@ def has_focused_group() -> bool:
 
 
 def get_focused_group() -> Group:
-    return groups[state(FGRPS)][state(FGRP)]
+    try:
+        return groups[state(FGRPS)][state(FGRP)]
+    except IndexError:
+        return None
 
 
 BUTTON_COLUMN, FIELD_COLUMN = 1, 2
 
 
+class Property:
+    def __init__(self, caption, width, category, type, next_line=False):
+        self.caption = caption
+        self.width = width
+        self.category = category
+        self.type = type
+        self.next_line = next_line
+
+    def total_width(self):
+        return len(self.caption) + CAPTION_BOX_SPACING + self.width
+
+    @property
+    def prebox_spacing(self):
+        return self.total_width() - self.width
+
+
+MAX_BUTTONS_PER_PAGE = 5
+
+
+class EditorProperty(Property):
+    def __init__(self, caption: str, width: int, category: str, type: str, enabled: bool, next_line: Union[bool, None]=False):
+        super().__init__(caption, width, category, type, next_line)
+        self.enabled = enabled
+        self.field: Union[InputField, None] = None
+
+    def build(self):
+        self.field = InputField(self.width, 1, [1, 2])
+
+    def get_value(self):
+        return self.field.get(self.type)
+
+
 class AssignmentEditor(Menu):
     def on_space(self):
-        if is_state(MSIDE, FIELD_COLUMN) and state(MIDXA) < len(self.caption_fields):
+        if is_state(MSIDE, FIELD_COLUMN) and state(MIDXA) < len(self.fields):
             midx = state(MIDXA)
-            field = self.caption_fields[midx]
+            field = self.fields[midx].field
             get_field(field)
-            if field.validate(self.field_types[midx]):
+            if field.validate(self.fields[midx].type) and state(MIDXA) != MAX_BUTTONS_PER_PAGE - 1:
                 self.find_index(1)
         else:
             self.on_enter()
 
-    def show(self, assignment=None):
-        if assignment:
-            name, desc, sdat, ddat, incr = range(5)
-            self.caption_fields[name].text = assignment.name
-            if assignment.has_description:
-                self.enabled[desc] = True
-                self.caption_fields[desc].text = assignment.desc
-            else:
-                self.enabled[desc] = False
-                self.caption_fields[desc].text = ""
-
-            if assignment.has_start_date:
-                self.enabled[sdat] = True
-                self.caption_fields[sdat].text = datetime_to_string(assignment.start_date)
-            else:
-                self.enabled[sdat] = False
-                self.caption_fields[sdat].text = ""
-
-            if assignment.has_due_date:
-                self.enabled[ddat] = True
-                self.caption_fields[ddat].text = datetime_to_string(assignment.due_date)
-            else:
-                self.enabled[ddat] = False
-                self.caption_fields[ddat].text = ""
-
-            if assignment.is_persistent:
-                self.enabled[incr] = True
-                self.caption_fields[incr].text = timedelta_to_string(assignment.interval)
-            else:
-                self.enabled[incr] = False
-                self.caption_fields[incr].text = ""
-
-        super().show()
-
     def on_enter(self):
-        if is_state(MIDXA, len(self.captions)):  # indicates create new assignment button
-            assignment_params = ["", "", None, None, None, ""]
+        if is_state(MIDXA, len(self.fields)):  # indicates create new assignment button
             # name, description, start_date, due_date, increment, type
-            for i, field in enumerate(self.caption_fields):
-                if self.enabled[i] is not False:
-                    assignment_params[i] = field.get(self.field_types[i])
-            get_focused_group().add_assignment(BaseAssignment(*assignment_params))
+            assignment = BaseAssignment(MP(), MP(), MP(), MP(), MP(), MP())
+            for i, field in enumerate(self.fields):
+                if self.fields[i].enabled is not False:
+                    if self.fields[i].caption == "Interval":
+                        interval = self.fields[i].field.get('ts')
+                        assignment.push_interval(interval)
+                    elif self.fields[i].caption == "Name":
+                        name = self.fields[i].field.get()
+                        assignment.push_name(name)
+                    elif self.fields[i].caption == "Description":
+                        desc = self.fields[i].field.get()
+                        assignment.push_desc(desc)
+                    elif self.fields[i].caption == "Due Date":
+                        due_date = self.fields[i].field.get('dt')
+                        assignment.push_due_date(due_date)
+                    elif self.fields[i].caption == "Start Date":
+                        start_date = self.fields[i].field.get('dt')
+                        assignment.push_start_date(start_date)
+                    elif self.fields[i].caption == "Type":
+                        type = self.fields[i].field.get()
+                        assignment.push_type(type)
+                    else:
+                        raise NameError("One or more captions in the Property Catalog have an incorrect caption.")
+            get_focused_group().add_assignment(assignment)
             poprefrs()
         elif is_state(MSIDE, BUTTON_COLUMN):
-            if self.enabled[state(MIDXA)] is not None:
-                self.enabled[state(MIDXA)] = not self.enabled[state(MIDXA)]
+            if self.fields[state(MIDXA)].enabled is not None:
+                self.fields[state(MIDXA)].enabled = not self.fields[state(MIDXA)].enabled
 
     def find_index(self, delta: int):
         d = delta // abs(delta)
@@ -1921,36 +1496,36 @@ class AssignmentEditor(Menu):
             check = False if is_state(MSIDE, FIELD_COLUMN) else None
             while True:
                 i += d
-                if 0 <= i <= len(self.enabled):
-                    if i == len(self.enabled) or self.enabled[i] is not check:
+                if 0 <= i <= len(self.fields):
+                    if i == len(self.fields) or self.fields[i].enabled is not check:
                         state(MIDXA, i)
                         break
                 else:
                     break
 
     def switch_sides(self, side: int):
-        if 0 > state(MIDXA) or state(MIDXA) >= len(self.captions):
+        if 0 > state(MIDXA) or state(MIDXA) >= len(self.fields):
             return
         state(MSIDE, side)
         if not is_state(MSIDE, MSIDE_UNDECIDED):
             check = None if is_state(MSIDE, BUTTON_COLUMN) else False
-            if self.enabled[state(MIDXA)] is check:
+            if self.fields[state(MIDXA)].enabled is check:
                 i = state(MIDXA)  # we default to the top button
-                for n in range(1, len(self.enabled)):
-                    if 0 <= i + n < len(self.enabled):
-                        if self.enabled[i + n] is not check:
+                for n in range(1, len(self.fields)):
+                    if 0 <= i + n < len(self.fields):
+                        if self.fields[i + n].enabled is not check:
                             state(MIDXA, i + n)
                             return
 
-                    if 0 <= i - n < len(self.enabled):
-                        if self.enabled[i - n] is not check:
+                    if 0 <= i - n < len(self.fields):
+                        if self.fields[i - n].enabled is not check:
                             state(MIDXA, i - n)
                             return
 
     def on_any_key(self, key):
-        if is_state(MSIDE, FIELD_COLUMN) and state(MIDXA) < len(self.caption_fields):
+        if is_state(MSIDE, FIELD_COLUMN) and state(MIDXA) < len(self.fields):
             if key != ENTER:
-                field = self.caption_fields[state(MIDXA)]
+                field = self.fields[state(MIDXA)].field
                 field.front_carat()
                 if key != BACKSPACE:
                     field.type(key)
@@ -1959,13 +1534,24 @@ class AssignmentEditor(Menu):
             self.on_space()
 
     def on_ctrl_c(self):
-        if is_state(MSIDE, FIELD_COLUMN) and state(MIDXA) < len(self.caption_fields):
+        if is_state(MSIDE, FIELD_COLUMN) and state(MIDXA) < len(self.fields):
             global clipboard
-            clipboard = self.caption_fields[state(MIDXA)].text
+            clipboard = self.fields[state(MIDXA)].field.text
 
     def on_ctrl_v(self):
-        if is_state(MSIDE, FIELD_COLUMN) and state(MIDXA) < len(self.caption_fields):
-            self.caption_fields[state(MIDXA)].type(clipboard)
+        if is_state(MSIDE, FIELD_COLUMN) and state(MIDXA) < len(self.fields):
+            self.fields[state(MIDXA)].type(clipboard)
+
+    def on_del(self):
+        del self.fields[state(MIDXA)]
+
+    def on_p(self):
+        midxa = state(MIDXA)
+        property = FUNCTIONS[PRCAT]()
+        if property:
+            eproperty = EditorProperty(property.caption, property.width, property.category, property.type, True)
+            state(MIDXA, midxa)
+            self.insert_property(midxa, eproperty)
 
     def get_map(self):
         def default_to_field_column():
@@ -1985,30 +1571,31 @@ class AssignmentEditor(Menu):
             COPY: self.on_ctrl_c,
             PASTE: self.on_ctrl_v,
             ENTER: self.on_enter,
-            SPACEBAR: self.on_space
+            SPACEBAR: self.on_space,
+            DEL: self.on_del,
+            b'p': self.on_p,  # TODO: make this open the property catalog instead of adding an interval property
+            #  TODO: allow for the deleting of properties once added
         }, {})
 
     def __init__(self):
         super().__init__()
-        self.fields: list[InputField] = [
-            # Name, Description, Start Date, Due Date, Due Date Postincrement
-        ]
         self.actives: list[bool] = []
-        self.enabled = [None, True, True, True, False]
 
-        self.captions = {
-            "Name": 30,
-            "Description": 90,
-            "Start Date": 24,
-            "Due Date": 24,  # YY-MM-DD hh:mm:ss (DateTime)
-            "Date Increment": 24,  # MM-WW-DD-hh-mm-ss (TimeSpan)
-        }
-        self.field_types = ['s', 's', 'dt', 'dt', 'ts']
-        self.caption_fields: list[InputField] = []
+        self.fields: list[EditorProperty] = [
+            EditorProperty("Name", NAME_WIDTH, "Name", "str", None),
+            EditorProperty("Type", NAME_WIDTH, "Type", "str", None),
+            EditorProperty("Description", MAX_PROPERTY_GROUP_WIDTH, "Desc", "str", True),
+            EditorProperty("Start Date", DATETIME_WIDTH, "Start Date", "dt", True),
+            EditorProperty("Due Date", DATETIME_WIDTH, "Due Date", "dt", True),
+            EditorProperty("Interval", TIMEDELTA_WIDTH, "Interval", "ts", False),
+        ]
 
-        for i, caption in enumerate(self.captions):
-            field = InputField(self.captions[caption], 1, [1, 2])
-            self.caption_fields.append(field)
+    def insert_property(self, idx, property):
+        self.fields.insert(idx, property)
+        self.build_field(idx)
+
+    def build_field(self, idx):
+        self.fields[idx].build()
 
     def menu_display(self):
         screen_share = 2 / 3
@@ -2026,28 +1613,49 @@ class AssignmentEditor(Menu):
 
         BOX_HEIGHT = 3
         OBJECT_SPACEOUT = 1 + margin_x + box_length * 2 + 1
-        for i, caption in enumerate(self.captions):
-            if self.enabled[i] is not None:
+
+        page = max(0, state(MIDXA)) // MAX_BUTTONS_PER_PAGE
+        if state(MIDXA) == len(self.fields) and state(MIDXA) % MAX_BUTTONS_PER_PAGE == 0:
+            page -= 1
+
+        page_count = (len(self.fields) - 1) // MAX_BUTTONS_PER_PAGE
+        #  TODO: may need to expand the algorithm to support buttons with h > 1
+        #  TODO: need to expnad the algorithm to support row-grouping by category
+
+        formatted_page_count = str(page_count + 1) if page_count + 1 > 10 else '0' + str(page_count + 1)
+        formatted_page = str(page + 1) if page + 1 > 10 else '0' + str(page + 1)
+        bx.place_hcenter_text(f"{formatted_page} / {formatted_page_count}", bx.h)
+
+        for f in range(page * 5, (page + 1) * 5):
+            if f >= len(self.fields):
+                break
+            field: EditorProperty = self.fields[f]
+            i = f - page * 5
+
+            caption = field.caption
+            if field.enabled is not None:
                 active = bx.place_box(box_length, 1, ((i + 1) * BOX_HEIGHT - 1, 1 + margin_x))
-                if self.enabled[i]:
+                if field.enabled:
                     active.place_center_text('X')
-                if is_state(MSIDE, BUTTON_COLUMN) and is_state(MIDXA, i):
+                if is_state(MSIDE, BUTTON_COLUMN) and is_state(MIDXA, f):
                     active.set_border('*')
-            elif is_state(MSIDE, BUTTON_COLUMN) and is_state(MIDXA, i):
+            elif is_state(MSIDE, BUTTON_COLUMN) and is_state(MIDXA, f):
                 state(MIDXA, state(MIDXA) + 1)  # +=1 until reach one that has a trigger
 
             name = caption + ": "
             bx.place_text(name, ((i + 1) * BOX_HEIGHT, 1 + OBJECT_SPACEOUT))
 
-            field = self.caption_fields[i]
-            bx.place(field,
+            if not field.field:
+                field.build()
+            ifield = field.field
+            bx.place(ifield,
                      ((i + 1) * BOX_HEIGHT - 1, 2 + OBJECT_SPACEOUT + len(caption) + 1))  # name
 
-            field.set_border_default()
+            ifield.set_border_default()
             if is_state(MSIDE, FIELD_COLUMN):
-                if i == state(MIDXA):
-                    if self.enabled[i] or self.enabled[i] is None:
-                        field.set_border('*')
+                if f == state(MIDXA):
+                    if field.enabled or field.enabled is None:
+                        ifield.set_border('*')
                     else:
                         state(MIDXA, state(MIDXA) - 1)
         # Enter Button
@@ -2055,16 +1663,269 @@ class AssignmentEditor(Menu):
         enter_h = 1
         enter_center_y = 1  # from the bottom of the screen
         enter = bx.place_box(enter_w, 1, (h - 1 + enter_h - 2 - enter_center_y, enter_w))  # + 2 for borders
-        enter.place_center_text("Create New Assignment");
-        if is_state(MIDXA, len(self.captions)):  # goes over
+        enter.place_center_text("Create New Assignment")
+        if is_state(MIDXA, len(self.fields)):  # goes over
             enter.set_border('*')
         return bx
 
+
+MAX_PROPERTY_GROUP_WIDTH = 90
+CAPTION_BOX_SPACING = 2
+PROPERTY_GROUP_MEMBER_SPACING = 4
+DATETIME_WIDTH = 24
+TIMEDELTA_WIDTH = 24
+NAME_WIDTH = 30
+INTEGER_WIDTH = 6
+
+
+class PropertyCatalog(Menu):
+    def __init__(self):
+        super().__init__()
+        self.properties = [
+            # Interval properties
+            Property("Interval", TIMEDELTA_WIDTH, "Interval", 'ts'),
+            Property("Interval Count", INTEGER_WIDTH, "Interval", 'int'),
+            #                      Property("Interval Mode", INTEGER_WIDTH, "Interval"),
+
+            # Due Date properties
+            Property("Due Date", DATETIME_WIDTH, "Due Date", 'dt'),
+            Property("Due Date Count", INTEGER_WIDTH, "Due Date", 'int'),
+
+            # Start Date properties
+            Property("Start Date", DATETIME_WIDTH, "Start Date", 'dt'),
+            Property("Start Date Count", INTEGER_WIDTH, "Start Date", 'int'),
+        ]
+
+    #  Properties that are similar to each other
+    #  May be grouped into a single row under
+    #  the following conditions
+    #  The sum of all widths and caption character
+    #  counts + CAPTION_BOX_SPACING of the properties
+    #  is less than MAX_PROPERTY_GROUP_WIDTH
+
+    #  The properties have the same Category
+
+    #  The proceeding property has next_line set to False.
+    #  If properties that are not similar to each
+    #  other appear next to each other,
+    #  they will be placed on an individual row.
+
+    #  Plan: Sort the array of properties by
+    #  Category. Place whitespace to differentiate
+    #  between prooperties of differing categories.
+
+    #  TODO: Support Properties in the Assignment Editor
+    #  TODO: support dropdown menus
+    def menu_display(self):
+        bx = Box(state(WIDTH), state(LNGTH))
+
+        group = get_focused_group()
+        if group is not None:
+            bx.place_text(group.name, (bx.h - 1, bx.w - len(group.name) - 1))
+        top_margin, bottom_margin = 1, 1
+        left_margin = 8
+        box_height = 3
+
+        line_idx = 0
+        page = 0
+
+        line_width = 0
+        line_category = ""
+        for i, property in enumerate(self.properties):
+            if not line_category:
+                line_category = property.category
+            y = 1 + top_margin + line_idx * box_height
+            if property.next_line or property.category != line_category or line_width + property.total_width() > MAX_PROPERTY_GROUP_WIDTH:
+                line_idx += 1
+                y = 1 + top_margin + line_idx * box_height
+                if y >= bx.h - bottom_margin:
+                    #  TODO: next page functionality
+                    #  Start off from a different page
+                    #  Possibly store the index of the last property of the previous page
+                    #       This would complicate the direct changing of pages
+                    #  Possibly manually calculate the first index iteratively
+                    break
+                line_width = 0
+                line_category = property.category
+
+            x = left_margin + line_width
+            bx.place_text(property.caption, (y + 1, x))
+            box = bx.place_box(property.width, 1, (y, x + property.prebox_spacing))
+            if state(MIDXB) == i:
+                box.set_border('*')
+            line_width += property.total_width() + 2 + PROPERTY_GROUP_MEMBER_SPACING  # two is for borders
+        page_count = 0
+
+        formatted_page_count = str(page_count + 1) if page_count + 1 > 10 else '0' + str(page_count + 1)
+        formatted_page = str(page + 1) if page + 1 > 10 else '0' + str(page + 1)
+        bx.place_hcenter_text(f"{formatted_page} / {formatted_page_count}", bx.h - bottom_margin + 1)
+        return bx
+
+    def show(self):
+        if not self.preshow():
+            return
+
+        box = self.menu_display().bake()
+        print(box)
+
+        output: Union[None, Property] = self.map.run()
+        if isinstance(output, Property):  # if property
+            return output
+        else:
+            return self.show()
+
+    def delta_midxb(self, delta):
+        state(MIDXB, state(MIDXB) + delta)
+        if not (0 <= state(MIDXB) < len(self.properties)):
+            state(MIDXB, clamp(state(MIDXB), 0, len(self.properties) - 1))
+
+    def output(self):
+        return self.properties[state(MIDXB)]
+
+    def get_map(self):
+        return InputMap({
+            UP: lambda: self.delta_midxb(-1),
+            DOWN: lambda: self.delta_midxb(1),
+            SPACEBAR: self.output
+        }, {})
+
+
+class Configuration(EditorProperty):
+    def __init__(self, caption: str, width: int, category: str, type: str, get: Callable, set: Callable,
+                 next_line: bool = False):
+        super().__init__(caption, width, category, type, None, next_line)
+        self.get = get
+        self.set = set
+
+    def update(self):
+        if InputField.FIELD != self.field:
+            self.field.clear()
+            self.field.type(self.get())
+
+
+class ConfigureAssignment(Menu):
+    def __init__(self):
+        super().__init__()
+        CON = Configuration
+        self.properties: list[Configuration] = [
+            CON("Random Alert Min. Freq", INTEGER_WIDTH, "Random Alert", 'int', lambda: str(alerts.min_rand_interval // 60),
+               lambda p: alerts.set_min_rand_interval(p.get_value() * 60)), # desc: "The minimum time in minutes between random alerts."
+            CON("Random Alert Max. Freq", INTEGER_WIDTH, "Random Alert", 'int', lambda: str(alerts.max_rand_interval // 60),
+               lambda p: alerts.set_max_rand_interval(p.get_value() * 60)), # desc: "The maximum time in minutes between random alerts."
+            CON("Normal Alert Voice", INTEGER_WIDTH, "Voices", 'int', lambda: str(state(VALRT)),
+               lambda p: state(VALRT, clamp(p.get_value(), 0, 1))),  # desc: The voice heard when a random alert is triggered. 0 for MALE, 1 for FEMALE.
+            CON("Random Alert Voice", INTEGER_WIDTH, "Voices", 'int', lambda: str(state(VRALR)),
+                lambda p: state(VRALR, clamp(p.get_value(), 0, 1))), # desc: The voice heard when a random alert is triggered. 0 for MALE, 1 for FEMALE.
+
+        ]
+
+    def menu_display(self):
+        box = Box(state(WIDTH), state(LNGTH), 3)
+        box.set_default_layer(0)
+
+        group = get_focused_group()
+        if group is not None:
+            box.place_text(group.name, (box.h - 1, box.w - len(group.name) - 1), index=2)
+
+        top_margin, bottom_margin = 1, 1
+        left_margin = 8
+        box_height = 3
+
+        line_idx = 0
+        page = 0
+
+        line_width = 0
+        line_category = ""
+        for i, config in enumerate(self.properties):
+            property = config
+            if not line_category:
+                line_category = property.category
+            y = 1 + top_margin + line_idx * box_height
+            if property.next_line or property.category != line_category or line_width + property.total_width() > MAX_PROPERTY_GROUP_WIDTH:
+                line_idx += 1
+                y = 1 + top_margin + line_idx * box_height
+                if y >= box.h - bottom_margin:
+                    #  TODO: next page functionality
+                    #  Start off from a different page
+                    #  Possibly store the index of the last property of the previous page
+                    #       This would complicate the direct changing of pages
+                    #  Possibly manually calculate the first index iteratively
+                    break
+                line_width = 0
+                line_category = property.category
+
+            x = left_margin + line_width
+            box.place_text(property.caption, (y + 1, x))
+
+            if not config.field:
+                config.build()
+            ifield = config.field
+            config.update()
+            if state(MIDXA) == i:
+                ifield.set_border('*')
+            else:
+                ifield.set_border_default()
+
+            box.place(ifield, (y, x + property.prebox_spacing))  # name
+
+            # sbx = box.place_box(property.width, 1, (y, x + property.prebox_spacing))
+            line_width += property.total_width() + 2 + PROPERTY_GROUP_MEMBER_SPACING  # two is for borders
+
+            # if is_state(MSIDE, FIELD_COLUMN):
+            #    if i == state(MIDXA):
+            #        if config.enabled or config.enabled is None:
+            #            ifield.set_border('*')
+            #        else:
+            #            state(MIDXA, state(MIDXA) - 1)
+        page_count = 0
+
+        formatted_page_count = str(page_count + 1) if page_count + 1 > 10 else '0' + str(page_count + 1)
+        formatted_page = str(page + 1) if page + 1 > 10 else '0' + str(page + 1)
+
+        box.place_hcenter_text(f"{formatted_page} / {formatted_page_count}", box.h - bottom_margin + 1)
+
+        if state(MACT) & VIEWING and not is_state(MIDXA, UNUSED_MIDX_START):
+            selected = self.properties[state(MIDXA)]
+            box.set_default_layer(1)
+            bx = box.place_box(box.w // 3, box.h, (0, box.w - box.w // 3))
+            bx.place_text(limit_width_smart_break(selected.description, bx.w - 1), (1, 2))
+        return box
+
+    def get_map(self):
+        def on_varrow(delta):
+            state(MIDXA, clamp(state(MIDXA) + delta, UNUSED_MIDX_START, len(self.properties) - 1))
+
+        def on_space():
+            field = self.properties[state(MIDXA)]
+            get_field(field.field)
+            field.set(field)
+
+        return InputMap(
+            {  # inputs (covered by getch)
+                b'y': lambda: quit(0),
+                b'n': lambda: trigger(POP) or trigger(REFRS),
+                b'v': lambda: state(MACT, state(MACT) ^ VIEWING),
+                UP: lambda: on_varrow(-1),
+                DOWN: lambda: on_varrow(1),
+                SPACEBAR: on_space
+                #    b'a': actions_menu,
+                #    b'e': conditions_menu,
+                #    b's': scheduler_menu,
+            },
+            {  # commands (inputted manually)
+                #    'qt': quit_menu,
+                #    'cl': clear_all_data,
+            })
+
+
+# class SchedulerMenu(Menu):
+#    def get_map(self):
 
 commands = ('cl', 'qt')
 
 
 def run(output: bool, *cmdss: list[str]):
+    out = []
     for cmds in cmdss:
         COMMAND_HISTORY.append(':' + " ".join(cmds))
 
@@ -2072,7 +1933,6 @@ def run(output: bool, *cmdss: list[str]):
         if cmd in TRIGGER_COMMANDS:
             TRIGGER_COMMANDS[cmd] = not TRIGGER_COMMANDS[cmd]
             #  trigger(REFRS, True)  # refresh the screen
-            return None
         elif cmd in STATE_COMMANDS and len(cmds) > 1:
             STATE_COMMANDS[cmd] = int(cmds[1])
         elif cmd in FUNCTIONS:
@@ -2087,9 +1947,12 @@ def run(output: bool, *cmdss: list[str]):
                     except KeyError:
                         pass
             FUNCTIONS[cmd](*prms)
-            return None
         if output:
-            return cmds
+            out.append(cmds)
+    if out:
+        if len(out) > 1:
+            return out
+        return out[0]
 
 
 def get_input(init: str = "", **specials) -> Union[bytes, str, None]:
@@ -2104,17 +1967,20 @@ def get_input(init: str = "", **specials) -> Union[bytes, str, None]:
     if key == SPECIAL:  # precedes special character; use getch() again
         # todo: check for esc
         spcl = getch()
-        print('\r', end="")
+        if is_trigger(INPCL):
+            print('\r', end="")
         return key + spcl
     elif key == b':' and not block_cmds:
         MAX_COMMAND_SIZE: int = 5
-        print('\r', end="")
+        if is_trigger(INPCL):
+            print('\r', end="")
         prompt = "-:> :"
         cmds: list[str] = [init[1:]]
         count = 0
 
         def clearline():
-            print('\r' + ' ' * 25 + '\r', end="")
+            if is_trigger(INPCL):
+                print('\r' + ' ' * 25 + '\r', end="")
 
         while True:
             print(prompt + " ".join(cmds), end="")
@@ -2126,7 +1992,8 @@ def get_input(init: str = "", **specials) -> Union[bytes, str, None]:
             elif ch == b';':
                 run(True, cmds)
                 clearline()
-                print("\r", end="")
+                if is_trigger(INPCL):
+                    print("\r", end="")
                 return get_input()
             elif ch == BACKSPACE:  # backspace
                 if cmds:
@@ -2144,7 +2011,8 @@ def get_input(init: str = "", **specials) -> Union[bytes, str, None]:
             clearline()
         return run(True, cmds)
     else:
-        print('\r', end="")
+        if is_trigger(INPCL):
+            print('\r', end="")
         return key  # key.decode('ascii').lower()
 
 
@@ -2157,6 +2025,7 @@ ALRON = 'alron'  # turns alerts on or off
 NOMIN = 'nomin'  # toggles minimizing on due date alert
 WARNS = 'warns'  # toggles ui warnings
 CFMDE = 'cfmde'  # toggles "confirm delete assignment" popup before removing an assignment
+INPCL = 'inpcl'  # toggles whether input clears the terminal
 TRIGGER_COMMANDS = {
     'hdnv': False,
     REFRS: False,
@@ -2166,7 +2035,8 @@ TRIGGER_COMMANDS = {
     ALRON: True,
     NOMIN: False,
     WARNS: False,
-    CFMDE: False
+    CFMDE: False,
+    INPCL: True,
 }
 
 
@@ -2239,10 +2109,13 @@ ATRIG = 'atrig'
 LIT = 'lit'
 SAVE = 'save'
 INCRA = 'incra'
-# RCACH = 'rcach'
+property_catalog = PropertyCatalog()
+PRCAT = 'prcat'
+configure_assignment = ConfigureAssignment()
+CNFGA = 'cnfga'
 FUNCTIONS: dict[str, Callable] = {
     RMENU: reset_menu_selection,
-    GROUP: lambda: reset_menu_selection() or group_menu.show,
+    GROUP: lambda: reset_menu_selection() or group_menu.show(),
     ASSGN: lambda: reset_menu_selection() or assignments_menu.show(),
     QT: quit_menu.show,
     FQT: lambda: quit(0),
@@ -2254,19 +2127,29 @@ FUNCTIONS: dict[str, Callable] = {
     LIT: lit,
     SAVE: savedata.save_all,
     INCRA: structs.increment_all_persistent,
-    # RCACH: alerts.clear_cache
+    PRCAT: lambda: reset_menu_selection() or property_catalog.show(),
+    CNFGA: lambda: reset_menu_selection() or configure_assignment.show()
 }
 
-COMMAND_HISTORY = []
+if __name__ == "__main__":  # these functions cause a circular dependency when ui.py is the main file
+    RCACH = 'rcach'
+    FUNCTIONS.update({
+        RCACH: alerts.clear_cache
+    })
 
-MENU: Menu = None
-STARTING_DIMENSIONS = ("20", "133")
-run(False,
-    ["lngth", STARTING_DIMENSIONS[0]],
-    ["width", STARTING_DIMENSIONS[1]])
+
+def initial_commands():
+    run(False,
+        ["lngth", STARTING_DIMENSIONS[0]],
+        ["width", STARTING_DIMENSIONS[1]],
+        [INCRA])
 
 
 def ui():
+    run(False,
+        ["lngth", STARTING_DIMENSIONS[0]],
+        ["width", STARTING_DIMENSIONS[1]],
+        [INCRA])
     while True:
         try:
             group_menu.show()
@@ -2338,6 +2221,7 @@ clipboard = ""
 def no_op():
     pass
 
+
 # todo: callback on finish
 # assumption: field is a single line input field
 def get_field(field: InputField, **callbacks):
@@ -2350,7 +2234,8 @@ def get_field(field: InputField, **callbacks):
         if is_trigger(POP):
             trigger(POP, False)
             break
-        clear()
+        if is_trigger(INPCL):
+            clear()
         print(menu.bake())
         ch = get_input(block_cmds=True)
         if isinstance(ch, bytes):
@@ -2407,12 +2292,28 @@ class InputFieldTemplateMenu(Menu):
         return bx
 """
 
+#  Property Catalog
+
 # Action Menu:
 #  At the far left side, the action options
 #  At the right side, group and assignment selection options
 
+COMMAND_HISTORY = []
+
+MENU: Menu = None
+STARTING_DIMENSIONS = ("20", "133")
+
 if __name__ == "__main__":
-    ui()
+    display = Box(1, 3)
+    initial_commands()
+    configure_assignment.show()
+
+    # button_width = 30
+    # w, h = state(WIDTH), state(LNGTH)
+    # display = Box(state(WIDTH), state(LNGTH), 2)
+    # display.place_hbar(h - h // 6, layer=1)
+    #  display.place_vbar(button_width, length=h - h // 6)
+    # print(display.bake())
 
 # WORK ON PRIORITY TYPES!
 # be able to add priority types

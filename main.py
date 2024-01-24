@@ -1,7 +1,7 @@
 import threading
 
-import ui
 import alerts
+import ui
 
 import win32api
 import msvcrt
@@ -53,9 +53,6 @@ if __name__ == "__main__":
     # Start the assignment checking thread
     ui_thread = threading.Thread(target=ui.ui, daemon=True)
     ui_thread.start()
-
-    start_date_thread = threading.Thread(target=lambda: alerts.check_start_dates(ui_thread), daemon=True)
-    start_date_thread.start()
 
     # Continue with your UI code or other components
     alerts.check_assignments(ui_thread)

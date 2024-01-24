@@ -29,7 +29,7 @@ from tkinter.messagebox import showinfo, showwarning
 import tkinter as tk
 import os
 
-from typing import Callable
+from typing import Callable, Union
 
 import asyncio
 
@@ -46,7 +46,7 @@ def say_normal(what: str):
         normal_tts = TTS(voice)
 
     normal_tts.set_voice(voice)
-    thread = Thread(target=lambda: normal_tts.say(what))
+    thread = Thread(target=lambda: normal_tts.say(what), daemon=True)
     thread.start()
 
 
@@ -58,28 +58,32 @@ def say_random(what: str):
         random_tts = TTS(voice)
 
     random_tts.set_voice(voice)
-    thread = Thread(target=lambda: random_tts.say(what))
+    thread = Thread(target=lambda: random_tts.say(what), daemon=True)
     thread.start()
 
 
-def warn(title: str, say: Callable, description: str, voice='valrt'):
-    try:
-        root = tk.Tk()
-        say(description)
-        showwarning(title, description)
-        root.destroy()
-    except:  # idk
-        pass
+SECONDS_TO_MS = 1000
+REPOPUP_TIME = 60
 
 
-def info(title: str, say: Callable, description: str, voice='valrt'):
-    try:
-        root = tk.Tk()
+def inform(title: str, say: Callable, description: str, voice='valrt'):
+    while True:
+        time_started = datetime.datetime.now()
+        ctk = tk.Tk()
+        ctk.attributes('-topmost', True)
+        ctk.update()
+        ctk.attributes('-topmost', False)
+
+        ctk.title(title)
+        tk.Label(ctk, text=description, padx=400, pady=200, relief=tk.RAISED).pack()
         say(description)
-        showinfo(title, description)
-        root.destroy()
-    except:  # idk
-        pass
+
+        second_count = REPOPUP_TIME * SECONDS_TO_MS
+        ctk.after(second_count, ctk.destroy)
+        ctk.mainloop()
+
+        if datetime.datetime.now() < time_started + datetime.timedelta(milliseconds=second_count):
+            break
 
 
 def unfocus_window():
@@ -114,7 +118,7 @@ def alert_due(assignment: BaseAssignment):
     if not enabled():
         return
 
-    warn("Assignment Due", say_normal, f"The {assignment.type} {assignment.name} is due now.")
+    inform("Assignment Due", say_normal, f"The {assignment.type} {assignment.name} is due now.")
 
     # unfocus_window()
     # time.sleep(0.3)
@@ -134,7 +138,7 @@ def alert_start(assignment: BaseAssignment):
     if not enabled():
         return
 
-    info("Assignment to be Started", say_normal, f"You should begin {assignment.type} {assignment.name} now.")
+    inform("Assignment to be Started", say_normal, f"You should begin {assignment.type} {assignment.name} now.")
     # toaster = win10toast.ToastNotifier()
     # toaster.show_toast("Random Alert",
     #                    "This is an alert reminding you to begin the {0} \"{1}\" if you are not already in the process of doing so.".format(
@@ -199,7 +203,6 @@ def check_group_due_dates(g: Group):
         alert_cache[assignment][1] = assignment.time_to_due_date()
 
 
-
 POST_ERROR_PAUSE = 5
 def check_assignments(ui_thread):
     while True:
@@ -216,6 +219,14 @@ def check_assignments(ui_thread):
 
 random_alert_next_time = None
 min_rand_interval, max_rand_interval = 7 * 60, 12 * 60
+
+def set_min_rand_interval(v):
+    global min_rand_interval
+    min_rand_interval = v
+
+def set_max_rand_interval(v):
+    global max_rand_interval
+    max_rand_interval = v
 
 
 # TODO: offer the ability to do random alerts for:
@@ -235,16 +246,19 @@ def random_alert():
     selected: BaseAssignment = random.choice(current_assignments)
     message = (f"This is a random alert reminding you to complete the {selected.type} {selected.name} "
                f"if you are not already in the process of doing so.")
-    info("Random Alert", say_random, "Hello. " + message, ui.VRALR)
+    inform("Random Alert", say_random, "Hello. " + message, ui.VRALR)
 
 
 def random_alert_check():
     global random_alert_next_time
+    active = ui.get_focused_group().any_current_assignments()
 
     time = datetime.datetime.now()
     if random_alert_next_time:
-        if time > random_alert_next_time and ui.get_focused_group().any_current_assignments():
-            random_alert()
+        if time > random_alert_next_time:
+            if active:
+                random_alert()
             random_alert_next_time = None
-    if not random_alert_next_time:
+    if not random_alert_next_time and active:
         random_alert_next_time = time + datetime.timedelta(seconds=random.randint(min_rand_interval, max_rand_interval))
+
