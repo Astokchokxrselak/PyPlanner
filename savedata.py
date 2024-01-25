@@ -25,7 +25,7 @@ Assignments are saved in a JSON format to be easily readable and editable in any
 TODO: live resaving and reloading of saved plans
 
 """
-FILE_NAME = "personal_plan.json"
+FILE_NAME = "plan1.json"
 
 
 statedata = {
@@ -52,7 +52,7 @@ def save_assignment(assignment: structs.BaseAssignment, group: Union[structs.Gro
     if assignment.has_due_date:
         assignment_dict["duedate"] = datetime_to_dict(assignment.due_date)
     if assignment.is_persistent:
-        assignment_dict["interval"] = [timedelta_to_dict(interval) for interval in assignment.interval_mprop().get_list()]
+        assignment_dict["interval"] = {'idx': assignment.interval_mprop().index, 'mprop': [timedelta_to_dict(interval) for interval in assignment.interval_mprop().get_list()]}
     gname = group.name if isinstance(group, structs.Group) else group
     statedata["groups"].setdefault(gname, {})
     statedata["groups"][gname][assignment.name] = assignment_dict
@@ -133,10 +133,12 @@ def load_group(group_name: str, g: dict):
         if "interval" in a:
             increment = MP()
             try:
-                for dc in a["interval"]:
+                increment.index = a["interval"]["idx"]
+                for dc in a["interval"]['mprop']:
                     increment.add(dict_to_timedelta(dc))
             except TypeError:
-                increment.add(dict_to_timedelta(a["interval"]))
+                for dc in a["interval"]:  # must be a list and not a dict
+                    increment.add(dict_to_timedelta(dc))
 
         if "type" in a:
             type = MP(a["type"])
