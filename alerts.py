@@ -68,21 +68,26 @@ REPOPUP_TIME = 60
 
 def inform(title: str, say: Callable, description: str, voice='valrt'):
     while True:
-        time_started = datetime.datetime.now()
-        ctk = tk.Tk()
-        ctk.attributes('-topmost', True)
-        ctk.update()
-        ctk.attributes('-topmost', False)
+        if ui.state(ui.NOTIF) & ui.POPUPS_ONLY:
+            time_started = datetime.datetime.now()
+            ctk = tk.Tk()
+            ctk.attributes('-topmost', True)
+            ctk.update()
+            ctk.attributes('-topmost', False)
 
-        ctk.title(title)
-        tk.Label(ctk, text=description, padx=400, pady=200, relief=tk.RAISED).pack()
-        say(description)
+            ctk.title(title)
+            tk.Label(ctk, text=description, padx=400, pady=200, relief=tk.RAISED).pack()
+        if ui.state(ui.NOTIF) & ui.VOICES_ONLY:
+            say(description)
 
-        second_count = REPOPUP_TIME * SECONDS_TO_MS
-        ctk.after(second_count, ctk.destroy)
-        ctk.mainloop()
+        if ui.state(ui.NOTIF) & ui.POPUPS_ONLY:
+            second_count = REPOPUP_TIME * SECONDS_TO_MS
+            ctk.after(second_count, ctk.destroy)
+            ctk.mainloop()
 
-        if datetime.datetime.now() < time_started + datetime.timedelta(milliseconds=second_count):
+            if datetime.datetime.now() < time_started + datetime.timedelta(milliseconds=second_count):
+                break
+        else:
             break
 
 
@@ -109,7 +114,7 @@ def now(): return datetime.datetime.now()
 
 
 def enabled():
-    return ui.is_trigger(ui.ALRON)
+    return not ui.is_state(ui.NOTIF, ui.ALROFF)
 
 
 def alert_due(assignment: BaseAssignment):

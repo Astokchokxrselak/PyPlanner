@@ -29,7 +29,7 @@ import structs
 import savedata
 
 from helpers.string_helpers import limit_width_smart_break
-
+from helpers.string_helpers import bool_x as x_or_space
 
 def ilerp(i1: int, i2: int, t: float) -> int:
     return int(i1 + (i2 - i1) * t)
@@ -76,7 +76,9 @@ from structs import (BaseAssignment, Group,
                      groups, active_groups, inactive_groups)
 
 
-def clear(): return os.system('cls')
+def clear():
+    if is_trigger(INPCL):
+        return os.system('cls')
 
 
 SPECIAL = b'\xe0'
@@ -1676,6 +1678,7 @@ DATETIME_WIDTH = 24
 TIMEDELTA_WIDTH = 24
 NAME_WIDTH = 30
 INTEGER_WIDTH = 6
+BOOL_WIDTH = 3
 
 
 class PropertyCatalog(Menu):
@@ -1816,7 +1819,10 @@ class ConfigureAssignment(Menu):
                lambda p: state(VALRT, clamp(p.get_value(), 0, 1))),  # desc: The voice heard when a random alert is triggered. 0 for MALE, 1 for FEMALE.
             CON("Random Alert Voice", INTEGER_WIDTH, "Voices", 'int', lambda: str(state(VRALR)),
                 lambda p: state(VRALR, clamp(p.get_value(), 0, 1))), # desc: The voice heard when a random alert is triggered. 0 for MALE, 1 for FEMALE.
-
+            CON("Alerts On", BOOL_WIDTH, "Alerts", 'bool', lambda: x_or_space(not is_state(NOTIF, ALROFF)), lambda p: state(NOTIF, ALROFF if not is_state(NOTIF, ALROFF) else ALRON)),
+            CON("Voices On", BOOL_WIDTH, "Alerts", 'bool', lambda: x_or_space(state(NOTIF) & VOICES_ONLY), lambda p: state(NOTIF, state(NOTIF) ^ VOICES_ONLY)),
+            CON("Popups On", BOOL_WIDTH, "Alerts", 'bool', lambda: x_or_space(state(NOTIF) & POPUPS_ONLY),
+                lambda p: state(NOTIF, state(NOTIF) ^ POPUPS_ONLY)),
         ]
 
     def menu_display(self):
@@ -1897,7 +1903,12 @@ class ConfigureAssignment(Menu):
 
         def on_space():
             field = self.properties[state(MIDXA)]
-            get_field(field.field)
+            if field.type == 'bool':
+                pass  # is a trigger, set should be ON and OFF
+            elif field.type == 'ddown':
+                pass
+            else:
+                get_field(field.field)
             field.set(field)
 
         return InputMap(
@@ -2021,7 +2032,6 @@ REFRS = 'refrs'  # refresh the current menu
 POP = 'pop'  # pop the current menu (can be used to quit from the group menu)
 DEBUG = 'debug'  # enter debug mode (counts empty spaces and shows origins for each element)
 PMDEF = 'pmdef'  # whether pm is default or not
-ALRON = 'alron'  # turns alerts on or off
 NOMIN = 'nomin'  # toggles minimizing on due date alert
 WARNS = 'warns'  # toggles ui warnings
 CFMDE = 'cfmde'  # toggles "confirm delete assignment" popup before removing an assignment
@@ -2032,7 +2042,6 @@ TRIGGER_COMMANDS = {
     POP: False,
     DEBUG: False,
     PMDEF: True,
-    ALRON: True,
     NOMIN: False,
     WARNS: False,
     CFMDE: False,
@@ -2078,6 +2087,12 @@ VALRT = 'valrt'  # the gender of the tts voice for normal alerts
 VRALR = 'vralr'  # the gender of the tts voice for random alerts
 ASTKY = 'astky'  # the key used to sort assignments
 
+ALROFF = 0b00
+POPUPS_ONLY = 0b01
+VOICES_ONLY = 0b10
+ALRON = 0b11
+NOTIF = 'notif'  # the bit field representing the notification mode (0 for both, 1 for no voice, 2 for no notification, 3 for neither)
+
 STATE_COMMANDS = {
     MSIDE: 0,  # menu side (-1: left, 0: unselected, 1: right)
     MIDXA: 0,  # menu index (0: first tab, n: (n + 1)th tab)
@@ -2089,7 +2104,8 @@ STATE_COMMANDS = {
     MACT: 0,
     VRALR: 1,  # 0 for male, 1 for female
     VALRT: 0,  # the gender of the tts voice for normal alerts
-    ASTKY: structs.UNSORTED  # keys can be found in structs.py
+    ASTKY: structs.UNSORTED,  # keys can be found in structs.py
+    NOTIF: ALRON  # by default, both voice and notification are on
 }
 
 RMENU = 'rmenu'
@@ -2142,7 +2158,8 @@ def initial_commands():
     run(False,
         ["lngth", STARTING_DIMENSIONS[0]],
         ["width", STARTING_DIMENSIONS[1]],
-        [INCRA])
+        [INCRA],
+        [INPCL])
 
 
 def ui():
